@@ -1,0 +1,117 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/forgot-password/index",
+			"style": {
+				"navigationBarTitleText": "忘记密码",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/student/workbench",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "学生工作台",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/student/paperList",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "我的论文列表",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/student/paperPreview",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "论文预览",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/student/noticeDetail",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "公告详情",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/student/ziye",
+			"style": {
+				"navigationBarTitleText": "我的论文",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/teacher/dashboard",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/teacher/profile",
+			"style": {
+				"navigationBarTitleText": "个人中心",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/teacher/MessageCenter",
+			"style": {
+				"navigationBarTitleText": "消息中心",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/student/attachmentList",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "附件列表",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/admin/management",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "系统管理",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/admin/profile",
+			"style": {
+				"navigationBarTitleText": "个人中心",
+				"navigationBarBackgroundColor": "#1890ff",
+				"navigationBarTextStyle": "white"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {}
+}
