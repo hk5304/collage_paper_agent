@@ -176,7 +176,7 @@
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-      <view class="modal-content">
+      <view class="modal-content password-modal-content">
         <view class="modal-header">
           <text class="modal-title">修改密码</text>
           <text class="modal-close" @click="closePasswordModal">×</text>
@@ -995,11 +995,11 @@ export default {
 /* 大屏幕 (>1400px) */
 @media screen and (min-width: 1400px) {
   .main-layout {
-    padding-left: 280px;
+    padding-left: 256px;
   }
   
   .sidebar {
-    width: 280px;
+    width: 256px;
   }
   
   .attachment-card {
@@ -1014,11 +1014,11 @@ export default {
 /* 中等屏幕 (992px-1399px) */
 @media screen and (max-width: 1399px) and (min-width: 992px) {
   .main-layout {
-    padding-left: 240px;
+    padding-left: 256px;
   }
   
   .sidebar {
-    width: 240px;
+    width: 256px;
   }
   
   .attachment-card {
@@ -1029,12 +1029,12 @@ export default {
 /* 平板屏幕 (768px-991px) */
 @media screen and (max-width: 991px) and (min-width: 768px) {
   .main-layout {
-    padding-left: 200px;
+    padding-left: 256px;
     padding-right: 16rpx;
   }
   
   .sidebar {
-    width: 200px;
+    width: 256px;
     padding: 20rpx 12rpx;
   }
   
@@ -2325,6 +2325,11 @@ export default {
   flex-direction: column;
 }
 
+/* 修改密码弹窗特定样式 - 固定宽度 400px */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -2348,6 +2353,7 @@ export default {
 .modal-title {
   font-size: 1.125rem;
   font-weight: 600;
+  font-family: var(--font-body);
   color: var(--on-surface);
 }
 
@@ -2386,6 +2392,7 @@ export default {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-2);
 }
@@ -2397,6 +2404,7 @@ export default {
   border: none;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
+  font-family: var(--font-body);
   color: var(--on-surface);
   background: var(--surface-container-low);
   box-sizing: border-box;
@@ -2422,6 +2430,7 @@ export default {
 .tips-text {
   font-size: 0.75rem;
   font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-amber);
 }
 
@@ -2436,6 +2445,7 @@ export default {
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;

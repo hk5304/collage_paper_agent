@@ -400,7 +400,7 @@
     
   <!-- 修改密码弹窗 -->
   <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-    <view class="modal-content">
+    <view class="modal-content password-modal-content">
       <view class="modal-header">
         <text class="modal-title">修改密码</text>
         <text class="modal-close" @click="closePasswordModal">×</text>
@@ -4075,76 +4075,16 @@ export default {
   opacity: 0.9;
 }
 
-/* 弹窗样式 */
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10001;
-}
-
-.modal-content {
-  background: #ffffff;
-  border-radius: 24rpx;
-  width: 600rpx;
-  max-width: 90vw;
-  box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.3);
-  animation: modalSlideIn 0.3s ease-out;
-}
-
-@keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-30rpx);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 30rpx 40rpx;
-  border-bottom: 1rpx solid #e8e8e8;
-}
-
-.modal-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.modal-body {
-  padding: 40rpx;
-}
-
-.modal-loading-text {
-  font-size: 28rpx;
-  color: #666;
-  text-align: center;
-  display: block;
-  margin-top: 20rpx;
-}
-
 /* ==================== 响应式设计 ==================== */
 
 /* 大屏幕 (>1400px) */
 @media screen and (min-width: 1400px) {
   .main-layout {
-    padding-left: 280px;
+    padding-left: 256px;
   }
   
   .sidebar {
-    width: 280px;
+    width: 256px;
   }
   
   .paper-card {
@@ -4155,11 +4095,11 @@ export default {
 /* 中等屏幕 (992px-1399px) */
 @media screen and (max-width: 1399px) and (min-width: 992px) {
   .main-layout {
-    padding-left: 240px;
+    padding-left: 256px;
   }
   
   .sidebar {
-    width: 240px;
+    width: 256px;
   }
   
   .paper-card {
@@ -4170,12 +4110,12 @@ export default {
 /* 平板屏幕 (768px-991px) */
 @media screen and (max-width: 991px) and (min-width: 768px) {
   .main-layout {
-    padding-left: 200px;
+    padding-left: 256px;
     padding-right: 16rpx;
   }
   
   .sidebar {
-    width: 200px;
+    width: 256px;
     padding: 20rpx 12rpx;
   }
   
@@ -4615,6 +4555,11 @@ export default {
   flex-direction: column;
 }
 
+/* 修改密码弹窗特定样式 - 确保优先级 */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -4638,6 +4583,7 @@ export default {
 .modal-title {
   font-size: 1.125rem;
   font-weight: 600;
+  font-family: var(--font-body);
   color: var(--on-surface);
 }
 
@@ -4676,6 +4622,7 @@ export default {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-2);
 }
@@ -4687,6 +4634,7 @@ export default {
   border: none;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
+  font-family: var(--font-body);
   color: var(--on-surface);
   background: var(--surface-container-low);
   box-sizing: border-box;
@@ -4712,6 +4660,7 @@ export default {
 .tips-text {
   font-size: 0.75rem;
   font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-amber);
 }
 
@@ -4726,6 +4675,7 @@ export default {
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;

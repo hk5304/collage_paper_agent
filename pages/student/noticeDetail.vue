@@ -186,7 +186,7 @@
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-      <view class="modal-content">
+      <view class="modal-content password-modal-content">
         <view class="modal-header">
           <text class="modal-title">修改密码</text>
           <text class="modal-close" @click="closePasswordModal">×</text>
@@ -1112,6 +1112,25 @@ export default {
   position: relative;
 }
 
+/* 修改密码弹窗特定样式 - 固定宽度 400px */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
+/* 修改密码弹窗内部元素样式统一 */
+.password-modal-content .modal-header {
+  padding: var(--spacing-4) var(--spacing-5);
+  min-height: auto;
+}
+
+.password-modal-content .modal-body {
+  padding: var(--spacing-5);
+}
+
+.password-modal-content .modal-footer {
+  padding: var(--spacing-4) var(--spacing-5);
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -1713,6 +1732,7 @@ export default {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-2);
 }
@@ -1724,6 +1744,7 @@ export default {
   border: none;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
+  font-family: var(--font-body);
   color: var(--on-surface);
   background: var(--surface-container-low);
   box-sizing: border-box;
@@ -1749,6 +1770,7 @@ export default {
 .tips-text {
   font-size: 0.75rem;
   font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-amber);
 }
 
@@ -1763,6 +1785,7 @@ export default {
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;

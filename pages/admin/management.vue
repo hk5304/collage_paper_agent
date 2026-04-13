@@ -158,7 +158,8 @@
 						<view class="import-section group-ops-import-inner">
 							<view class="import-tips">
 								<text class="tip-title">导入说明：</text>
-								<text class="tip-item">1. 支持CSV格式（.csv）</text>
+								<text class="tip-item">1. 支持CSV格式（.csv）和XLSX格式(.xlsx)
+								</text>
 								<text class="tip-item">2. 文件大小不超过10MB</text>
 								<text class="tip-item">3. 必须包含以下列：教师姓名、教师工号、学生姓名、学生学号、群组编号、群组名称</text>
 							</view>
@@ -254,16 +255,18 @@
 				<view class="group-ops-list-section">
 					<view class="group-ops-list-head">
 						<text class="group-ops-list-title">群组列表</text>
-						<text class="group-ops-list-sub">按教师工号筛选，或浏览全部群组。</text>
+						<text class="group-ops-list-sub">按教师工号或群组名称筛选，或浏览全部群组。</text>
 					</view>
 					<view class="group-ops-search-bar">
-						<text class="group-ops-search-label">教师工号</text>
+						<text class="group-ops-search-label">查询条件</text>
 						<view class="group-ops-search-row">
 							<text class="material-symbols-outlined group-ops-search-ic">search</text>
 							<input
 								class="group-ops-search-input"
-								v-model="searchTeacherId"
-								placeholder="输入工号筛选，留空可加载全部"
+								v-model="groupSearchKeyword"
+								placeholder="输入教师工号格式或群组名称，留空可加载全部"
+								confirm-type="search"
+								@confirm="searchGroups"
 							/>
 							<button class="group-ops-search-submit" type="default" @click="searchGroups">
 								<text class="material-symbols-outlined group-ops-search-submit-ic">travel_explore</text>
@@ -1928,7 +1931,7 @@
 				currentTab: 'group',
 				/** 院校信息维护 Tab + 页面 + 相关弹窗；暂不用时 false，需要时改为 true */
 				showSchoolMaintenanceTab: false,
-				searchTeacherId: '',
+				groupSearchKeyword: '',
 				groups: [],
 				showGroupModal: false,
 				editingGroup: null,
@@ -2492,12 +2495,99 @@
 				if (/^\d{4}-\d{2}-\d{2}/.test(t) && t.length > 19) return t.slice(0, 19);
 				return t;
 			},
+			resolveManagedUserType(user) {
+				const rawType = String(
+					user?.role || user?.user_type || user?.type || user?.member_type || ''
+				).trim().toLowerCase();
+				if (
+					rawType === 'student' ||
+					rawType === '学生' ||
+					user?.student_id != null ||
+					user?.studentId != null
+				) {
+					return 'student';
+				}
+				if (
+					rawType === 'teacher' ||
+					rawType === '教师' ||
+					user?.teacher_id != null ||
+					user?.teacherId != null
+				) {
+					return 'teacher';
+				}
+				if (
+					rawType === 'admin' ||
+					rawType === 'administrator' ||
+					rawType === '管理员' ||
+					user?.admin_id != null ||
+					user?.adminId != null
+				) {
+					return 'admin';
+				}
+				return '';
+			},
+			resolveManagedUserBackendId(user) {
+				if (user?.backendUserId != null && user.backendUserId !== '') {
+					return user.backendUserId;
+				}
+				if (user?.userId != null && user.userId !== '') {
+					return user.userId;
+				}
+				if (user?.user_id != null && user.user_id !== '') {
+					return user.user_id;
+				}
+				if (user?.account_id != null && user.account_id !== '') {
+					return user.account_id;
+				}
+				if (user?.sub != null && user.sub !== '') {
+					return user.sub;
+				}
+				if (
+					user?.id != null &&
+					user.id !== '' &&
+					(user?.user_type != null ||
+						user?.type != null ||
+						user?.student_id != null ||
+						user?.teacher_id != null ||
+						user?.admin_id != null)
+				) {
+					return user.id;
+				}
+				return null;
+			},
+			ensureActionSucceeded(result, fallbackMessage = '操作失败') {
+				console.log('[ensureActionSucceeded] 检查结果:', JSON.stringify(result));
+				if (!result || typeof result !== 'object') {
+					console.log('[ensureActionSucceeded] result 为空或非对象，直接返回');
+					return result;
+				}
+				const detailMessage =
+					typeof result.detail === 'string'
+						? result.detail
+						: Array.isArray(result.detail) && result.detail[0] && typeof result.detail[0].msg === 'string'
+							? result.detail[0].msg
+							: '';
+				const errorMessage = detailMessage || result.message || result.error || fallbackMessage;
+				console.log('[ensureActionSucceeded] 解析的 errorMessage:', errorMessage);
+				if (typeof result.code === 'number' && result.code >= 400) {
+					console.error('[ensureActionSucceeded] 检测到 code >= 400, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				if (result.success === false || result.error) {
+					console.error('[ensureActionSucceeded] 检测到 success=false 或 error, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				if (result.detail && result.success !== true && !(typeof result.code === 'number' && result.code < 400)) {
+					console.error('[ensureActionSucceeded] 检测到 detail 存在但非成功状态, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				console.log('[ensureActionSucceeded] 检查通过，操作成功');
+				return result;
+			},
 			mapDirectoryUserRow(raw) {
-				const ut = String(raw.user_type || raw.role || raw.type || '').toLowerCase();
-				let role = 'student';
-				if (ut === 'teacher' || ut === '教师') role = 'teacher';
-				else if (ut === 'admin' || ut === 'administrator' || ut === '管理员') role = 'admin';
+				const role = this.resolveManagedUserType(raw) || 'student';
 				const sub = raw.sub ?? raw.user_id ?? raw.id ?? raw.account_id;
+				const backendUserId = raw.id ?? raw.user_id ?? raw.account_id ?? raw.sub;
 				const username = String(raw.username || raw.login || '').trim();
 				const name = String(
 					raw.full_name || raw.name || raw.nickname || username || '—'
@@ -2520,6 +2610,7 @@
 				);
 				return {
 					sub,
+					backendUserId,
 					id: bizId || '—',
 					name: name || '—',
 					role,
@@ -3815,7 +3906,11 @@
 				// 搜索逻辑已在computed中实现
 			},
 			editUserPermission(user) {
-				this.permissionUser = user;
+				this.permissionUser = {
+					...user,
+					role: this.resolveManagedUserType(user),
+					backendUserId: this.resolveManagedUserBackendId(user)
+				};
 				this.selectedRoleIndex = -1;
 				this.newBusinessId = '';
 				this.showPermissionModal = true;
@@ -3876,16 +3971,49 @@
 			},
 			async doDeleteUser() {
 				this.showDeleteUserConfirm = false;
+				const userType = this.resolveManagedUserType(this.permissionUser);
+				const username = this.permissionUser?.id || this.permissionUser?.username;
+				console.log('[删除用户调试] permissionUser:', JSON.stringify(this.permissionUser));
+				console.log('[删除用户调试] 解析后的 userType:', userType);
+				console.log('[删除用户调试] 用于查询的用户名/学号:', username);
+				if (!username) {
+					console.error('[删除用户调试] 错误: 无法获取用户名/学号');
+					uni.showToast({ title: '缺少用户信息，无法删除', icon: 'none' });
+					return;
+				}
+				if (!userType) {
+					console.error('[删除用户调试] 错误: userType 为空');
+					uni.showToast({ title: '无法识别用户类型，删除失败', icon: 'none' });
+					return;
+				}
 				uni.showLoading({ title: '删除中...' });
 				try {
-					const { deleteUser } = await import('@/api/admin.js');
-					await deleteUser(this.permissionUser.sub, this.permissionUser.role);
+					const { getUserSubAuto, deleteUser } = await import('@/api/admin.js');
+					console.log('[删除用户调试] 步骤1: 调用 getUserSubAuto 获取真实 sub, username:', username);
+					const subResult = await getUserSubAuto(username);
+					console.log('[删除用户调试] getUserSubAuto 返回:', JSON.stringify(subResult));
+					let realSub = null;
+					if (subResult && typeof subResult === 'object') {
+						const data = subResult.data ?? subResult;
+						realSub = data?.sub ?? data?.id ?? data?.user_id ?? null;
+						console.log('[删除用户调试] 提取的数据对象:', JSON.stringify(data));
+					}
+					if (!realSub) {
+						console.error('[删除用户调试] 错误: 无法从 getUserSubAuto 获取 sub');
+						throw new Error('无法获取用户真实ID，删除失败');
+					}
+					console.log('[删除用户调试] 步骤2: 获取到真实 sub:', realSub);
+					console.log('[删除用户调试] 步骤3: 调用 deleteUser:', { realSub, userType });
+					const result = await deleteUser(realSub, userType);
+					console.log('[删除用户调试] deleteUser 返回结果:', JSON.stringify(result));
+					this.ensureActionSucceeded(result, '删除失败');
 					uni.hideLoading();
 					uni.showToast({ title: '用户已删除', icon: 'success' });
 					this.showPermissionModal = false;
 					await this.loadUserDirectory();
 				} catch (err) {
 					uni.hideLoading();
+					console.error('[删除用户调试] 异常捕获:', err);
 					uni.showToast({ title: err.message || '删除失败', icon: 'none' });
 				}
 			},
@@ -5012,10 +5140,24 @@
 					uni.hideLoading();
 				}
 			},
-			// 查询群组：有工号则按教师筛选；留空则加载全部（与占位文案一致）
+			searchGroupsNormalizeItems(result) {
+				return this.normalizeGroupListItems(result).map((item) => ({
+					id: String(item.group_id ?? item.id ?? item.code ?? ''),
+					name: String(item.group_name ?? item.name ?? '').trim(),
+					code: String(item.group_id ?? item.code ?? item.id ?? ''),
+					created_at: item.created_at || item.create_time || '',
+					active: item.status !== 'inactive',
+					teacherCount: item.teacher_count || 0,
+					studentCount: item.student_count || 0,
+					paperCount: item.paper_count || 0
+				}));
+			},
+			// 查询群组：单输入框支持教师工号格式或群组名称；留空则加载全部
 			async searchGroups() {
-				const q = (this.searchTeacherId || '').trim();
-				await this.loadGroupList(q || null);
+				const keyword = (this.groupSearchKeyword || '').trim();
+				await this.loadGroupList({
+					keyword: keyword || null
+				});
 			},
 			
 			// 加载群组成员统计信息
@@ -5070,78 +5212,48 @@
 			},
 			
 			// 加载群组列表
-			async loadGroupList(teacherId = null) {
+			async loadGroupList(filters = {}) {
 				console.log('开始加载群组列表...');
+				const keyword = typeof filters === 'object' && filters !== null
+					? ((filters.keyword || '').trim())
+					: ((filters || '').trim ? (filters || '').trim() : '');
+				const isTeacherIdSearch = /^\d+$/.test(keyword) || /^t\d+$/i.test(keyword);
+				const teacherIdValue = /^t\d+$/i.test(keyword) ? keyword : String(keyword || '');
 				try {
 					uni.showLoading({ title: '加载中...' });
 					
 					const adminInfo = await this.getOrCreateAdmin();
+					const currentUser = this.buildCurrentUserFromAdmin(adminInfo);
 					const { getGroupList } = await import('@/api/admin.js');
+					let groups = [];
 					
-					const params = { page: 1, page_size: 100 };
-					if (teacherId != null && teacherId !== '') {
-						params.teacher_id = teacherId;
-					}
-					
-					const currentUser = {
-						sub: String(adminInfo.id),
-						roles: adminInfo.roles,
-						username: String(adminInfo.username)
-					};
-					
-					const result = await getGroupList(params, currentUser);
-					console.log('接口返回结果:', result);
-					
-					let list = [];
-					if (Array.isArray(result)) {
-						list = result;
-					} else if (result && typeof result === 'object') {
-						const code = result.code;
-						if (typeof code === 'number' && code >= 400) {
-							this.groups = [];
-							this.groupOptions = [];
-							uni.showToast({
-								title: result.message || result.detail || '获取群组列表失败',
-								icon: 'none'
-							});
-							return;
-						}
-						let raw =
-							result.items ||
-							result.groups ||
-							result.list ||
-							(Array.isArray(result.results) ? result.results : null);
-						if (raw == null && result.data != null) {
-							const d = result.data;
-							raw = Array.isArray(d) ? d : d.items || d.list || d.groups || null;
-						}
-						list = Array.isArray(raw) ? raw : [];
+					if (!keyword) {
+						const result = await getGroupList({ page: 1, page_size: 100 }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
+					} else if (isTeacherIdSearch) {
+						const result = await getGroupList({ page: 1, page_size: 100, teacher_id: teacherIdValue }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
 					} else {
-						this.groups = [];
-						this.groupOptions = [];
-						uni.showToast({ title: '群组列表数据格式异常', icon: 'none' });
-						return;
+						const result = await getGroupList({ page: 1, page_size: 100, keyword }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
 					}
 					
-					this.groups = list.map((item) => ({
-						id: item.group_id || item.id,
-						name: item.group_name || item.name,
-						code: item.group_id || item.code,
-						created_at: item.created_at || item.create_time || '',
-						active: item.status !== 'inactive',
-						teacherCount: item.teacher_count || 0,
-						studentCount: item.student_count || 0,
-						paperCount: item.paper_count || 0
-					}));
-					
+					this.groups = groups;
 					this.groupOptions = this.groups.map((g) => ({
 						name: g.name,
 						value: g.id
 					}));
 					
 					if (this.groups.length === 0) {
+						let emptyText = '暂无群组数据';
+						if (keyword) {
+							emptyText = isTeacherIdSearch ? '该工号下暂无群组' : '未找到匹配的群组';
+						}
 						uni.showToast({
-							title: teacherId ? '该工号下暂无群组' : '暂无群组数据',
+							title: emptyText,
 							icon: 'none'
 						});
 					}
