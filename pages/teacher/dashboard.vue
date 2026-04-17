@@ -267,7 +267,7 @@
             <!-- 分页 -->
             <view class="pagination" v-if="filteredStudents.length > 0">
               <view class="pagination-info">
-                <text>显示第 {{ paginationStart }}-{{ paginationEnd }} 名学生，共 {{ filteredStudents.length }} 名</text>
+                <text>显示第 {{ paginationStart }}-{{ paginationEnd }} 篇论文，共 {{ filteredStudents.length }} 篇</text>
               </view>
               <view class="pagination-controls">
                 <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">

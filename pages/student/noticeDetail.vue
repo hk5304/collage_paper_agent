@@ -207,7 +207,7 @@
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-      <view class="modal-content">
+      <view class="modal-content password-modal-content">
         <view class="modal-header">
           <text class="modal-title">修改密码</text>
           <text class="modal-close" @click="closePasswordModal">×</text>
@@ -1104,6 +1104,25 @@ export default {
   flex-direction: column;
 }
 
+/* 修改密码弹窗特定样式 - 固定宽度 400px */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
+/* 修改密码弹窗内部元素样式统一 */
+.password-modal-content .modal-header {
+  padding: var(--spacing-4) var(--spacing-5);
+  min-height: auto;
+}
+
+.password-modal-content .modal-body {
+  padding: var(--spacing-5);
+}
+
+.password-modal-content .modal-footer {
+  padding: var(--spacing-4) var(--spacing-5);
+}
+
 @keyframes modalSlideIn {
   from {
     opacity: 0;
@@ -1874,6 +1893,7 @@ export default {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-3);
   font-family: var(--font-body);

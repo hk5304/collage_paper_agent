@@ -61,7 +61,7 @@
 			<view class="sidebar-footer">
 				<view class="sidebar-link" @click="onSidebarHelp">
 					<text class="material-symbols-outlined">help</text>
-					<text>帮助中心</text>
+					<text>关于系统</text>
 				</view>
 				<view class="sidebar-link sidebar-link-danger" @click="showLogoutConfirm">
 					<text class="material-symbols-outlined">logout</text>
@@ -158,7 +158,8 @@
 						<view class="import-section group-ops-import-inner">
 							<view class="import-tips">
 								<text class="tip-title">导入说明：</text>
-								<text class="tip-item">1. 支持CSV格式（.csv）</text>
+								<text class="tip-item">1. 支持CSV格式（.csv）和XLSX格式(.xlsx)
+								</text>
 								<text class="tip-item">2. 文件大小不超过10MB</text>
 								<text class="tip-item">3. 必须包含以下列：教师姓名、教师工号、学生姓名、学生学号、群组编号、群组名称</text>
 							</view>
@@ -254,16 +255,18 @@
 				<view class="group-ops-list-section">
 					<view class="group-ops-list-head">
 						<text class="group-ops-list-title">群组列表</text>
-						<text class="group-ops-list-sub">按教师工号筛选，或浏览全部群组。</text>
+						<text class="group-ops-list-sub">按教师工号或群组名称筛选，或浏览全部群组。</text>
 					</view>
 					<view class="group-ops-search-bar">
-						<text class="group-ops-search-label">教师工号</text>
+						<text class="group-ops-search-label">查询条件</text>
 						<view class="group-ops-search-row">
 							<text class="material-symbols-outlined group-ops-search-ic">search</text>
 							<input
 								class="group-ops-search-input"
-								v-model="searchTeacherId"
-								placeholder="输入工号筛选，留空可加载全部"
+								v-model="groupSearchKeyword"
+								placeholder="输入教师工号格式或群组名称，留空可加载全部"
+								confirm-type="search"
+								@confirm="searchGroups"
 							/>
 							<button class="group-ops-search-submit" type="default" @click="searchGroups">
 								<text class="material-symbols-outlined group-ops-search-submit-ic">travel_explore</text>
@@ -526,6 +529,14 @@
 							/>
 						</view>
 						<button
+							class="access-dir-sort-btn"
+							type="default"
+							@click="toggleAccessDirectorySort"
+						>
+							<text class="material-symbols-outlined access-dir-sort-btn-ic">swap_vert</text>
+							{{ accessDirectorySortMode === 'time' ? '按学号排序' : '按时间排序' }}
+						</button>
+						<button
 							class="access-dir-search-btn"
 							type="default"
 							:disabled="userDirectoryLoading"
@@ -545,9 +556,10 @@
 						</view>
 						<view class="access-user-rows">
 							<view
-								v-for="(user, index) in accessDirectoryUsers"
-								:key="'u_' + index + '_' + (user.sub ?? '') + '_' + (user.id ?? '') + '_' + (user.role || '')"
 								class="access-user-row"
+								:class="{ 'access-user-row--sorting': accessDirectorySortAnimating }"
+								v-for="(user, index) in accessDirectoryUsers"
+								:key="'u_' + (user.sub ?? '') + '_' + (user.id ?? '') + '_' + (user.role || '')"
 							>
 								<view class="access-user-profile">
 									<view class="access-user-avatar" :class="'access-user-avatar--' + (user.role || 'student')">
@@ -1169,7 +1181,7 @@
 								<button class="invite-btn" @click="inviteMember('student')">+ 邀请学生</button>
 							</view>
 							<view class="member-list">
-								<view v-for="student in groupMembers.students" :key="student.member_id" class="member-item">
+								<view v-for="student in sortedGroupStudents" :key="student.member_id" class="member-item">
 									<view class="member-info">
 										<text class="member-name">{{ student.name }}</text>
 										<text class="member-id">学号: {{ student.student_id || student.account_id || student.member_id || '—' }}</text>
@@ -1255,15 +1267,7 @@
 							:placeholder="inviteType === 'teacher' ? '请输入教师工号' : '请输入学生学号'"
 						/>
 					</view>
-					<view class="form-item admin-dialog-form-item" v-if="inviteType === 'teacher'">
-						<text class="form-label">角色</text>
-						<picker mode="selector" :range="['member', 'admin']" @change="onInviteRoleChange">
-							<view class="picker-view admin-dialog-picker">
-								<text>{{ inviteForm.role === 'admin' ? '管理员' : '普通成员' }}</text>
-								<text class="material-symbols-outlined admin-dialog-picker-arrow">expand_more</text>
-							</view>
-						</picker>
-					</view>
+
 				</view>
 				<view class="admin-dialog-footer">
 					<button class="admin-dialog-btn admin-dialog-btn--ghost" type="default" @click="closeInviteModal">取消</button>
@@ -1927,7 +1931,7 @@
 				currentTab: 'group',
 				/** 院校信息维护 Tab + 页面 + 相关弹窗；暂不用时 false，需要时改为 true */
 				showSchoolMaintenanceTab: false,
-				searchTeacherId: '',
+				groupSearchKeyword: '',
 				groups: [],
 				showGroupModal: false,
 				editingGroup: null,
@@ -2003,6 +2007,8 @@
 					errors: []
 				},
 				searchKeyword: '',
+								accessDirectorySortMode: 'time',
+								accessDirectorySortAnimating: false,
 				userDirectoryLoading: false,
 				accessRoleFilter: 'all',
 				users: [],
@@ -2207,8 +2213,35 @@
 			accessDirectoryUsers() {
 				const base = this.filteredUsers;
 				const f = this.accessRoleFilter;
-				if (f === 'all') return base;
-				return base.filter((u) => (u.role || '') === f);
+				const filtered = f === 'all' ? base : base.filter((u) => (u.role || '') === f);
+				const list = [...filtered];
+				if (this.accessDirectorySortMode === 'studentId') {
+					return list.sort((a, b) => {
+						const idA = String(a.id || '');
+						const idB = String(b.id || '');
+						const numA = parseInt(idA, 10);
+						const numB = parseInt(idB, 10);
+						if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+							return numA - numB;
+						}
+						if (!Number.isNaN(numA)) return -1;
+						if (!Number.isNaN(numB)) return 1;
+						return idA.localeCompare(idB);
+					});
+				}
+				return list.sort((a, b) => {
+					const timeA = a.createdAtSortValue ?? 0;
+					const timeB = b.createdAtSortValue ?? 0;
+					if (timeA !== timeB) return timeB - timeA;
+					const idA = String(a.id || '');
+					const idB = String(b.id || '');
+					const numA = parseInt(idA, 10);
+					const numB = parseInt(idB, 10);
+					if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+						return numA - numB;
+					}
+					return idA.localeCompare(idB);
+				});
 			},
 			// 可转换的角色列表（排除当前角色）
 			availableRoles() {
@@ -2340,6 +2373,20 @@
 				);
 				return o ? o.label : '全部角色';
 			},
+			/** 群组详情：学生列表按学号排序 */
+			sortedGroupStudents() {
+				const students = this.groupMembers?.students || [];
+				return [...students].sort((a, b) => {
+					const idA = String(a.student_id || a.account_id || a.member_id || '');
+					const idB = String(b.student_id || b.account_id || b.member_id || '');
+					const numA = parseInt(idA, 10);
+					const numB = parseInt(idB, 10);
+					if (!isNaN(numA) && !isNaN(numB)) {
+						return numA - numB;
+					}
+					return idA.localeCompare(idB);
+				});
+			},
 			/** 是否启用关键词以外的筛选（用于底部统计提示） */
 			groupRelationsHasNonSearchFilters() {
 				return (
@@ -2452,6 +2499,13 @@
 				this.groupRelationsGroupDropdownOpen = false;
 				this.groupRelationsRoleDropdownOpen = next;
 			},
+			toggleAccessDirectorySort() {
+				this.accessDirectorySortAnimating = true;
+				this.accessDirectorySortMode = this.accessDirectorySortMode === 'time' ? 'studentId' : 'time';
+				setTimeout(() => {
+					this.accessDirectorySortAnimating = false;
+				}, 260);
+			},
 			selectGroupRelationsGroup(opt) {
 				if (opt) {
 					this.groupRelationsFilterGroupId = opt.value;
@@ -2499,12 +2553,107 @@
 				if (/^\d{4}-\d{2}-\d{2}/.test(t) && t.length > 19) return t.slice(0, 19);
 				return t;
 			},
+			parseDirectoryUserCreatedAt(v) {
+				if (v == null || v === '') return 0;
+				const s = String(v).trim();
+				if (!s) return 0;
+				const normalized = s.includes('T') ? s : s.replace(' ', 'T');
+				const ts = new Date(normalized).getTime();
+				return Number.isNaN(ts) ? 0 : ts;
+			},
+			resolveManagedUserType(user) {
+				const rawType = String(
+					user?.role || user?.user_type || user?.type || user?.member_type || ''
+				).trim().toLowerCase();
+				if (
+					rawType === 'student' ||
+					rawType === '学生' ||
+					user?.student_id != null ||
+					user?.studentId != null
+				) {
+					return 'student';
+				}
+				if (
+					rawType === 'teacher' ||
+					rawType === '教师' ||
+					user?.teacher_id != null ||
+					user?.teacherId != null
+				) {
+					return 'teacher';
+				}
+				if (
+					rawType === 'admin' ||
+					rawType === 'administrator' ||
+					rawType === '管理员' ||
+					user?.admin_id != null ||
+					user?.adminId != null
+				) {
+					return 'admin';
+				}
+				return '';
+			},
+			resolveManagedUserBackendId(user) {
+				if (user?.backendUserId != null && user.backendUserId !== '') {
+					return user.backendUserId;
+				}
+				if (user?.userId != null && user.userId !== '') {
+					return user.userId;
+				}
+				if (user?.user_id != null && user.user_id !== '') {
+					return user.user_id;
+				}
+				if (user?.account_id != null && user.account_id !== '') {
+					return user.account_id;
+				}
+				if (user?.sub != null && user.sub !== '') {
+					return user.sub;
+				}
+				if (
+					user?.id != null &&
+					user.id !== '' &&
+					(user?.user_type != null ||
+						user?.type != null ||
+						user?.student_id != null ||
+						user?.teacher_id != null ||
+						user?.admin_id != null)
+				) {
+					return user.id;
+				}
+				return null;
+			},
+			ensureActionSucceeded(result, fallbackMessage = '操作失败') {
+				console.log('[ensureActionSucceeded] 检查结果:', JSON.stringify(result));
+				if (!result || typeof result !== 'object') {
+					console.log('[ensureActionSucceeded] result 为空或非对象，直接返回');
+					return result;
+				}
+				const detailMessage =
+					typeof result.detail === 'string'
+						? result.detail
+						: Array.isArray(result.detail) && result.detail[0] && typeof result.detail[0].msg === 'string'
+							? result.detail[0].msg
+							: '';
+				const errorMessage = detailMessage || result.message || result.error || fallbackMessage;
+				console.log('[ensureActionSucceeded] 解析的 errorMessage:', errorMessage);
+				if (typeof result.code === 'number' && result.code >= 400) {
+					console.error('[ensureActionSucceeded] 检测到 code >= 400, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				if (result.success === false || result.error) {
+					console.error('[ensureActionSucceeded] 检测到 success=false 或 error, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				if (result.detail && result.success !== true && !(typeof result.code === 'number' && result.code < 400)) {
+					console.error('[ensureActionSucceeded] 检测到 detail 存在但非成功状态, 抛出错误:', errorMessage);
+					throw new Error(errorMessage);
+				}
+				console.log('[ensureActionSucceeded] 检查通过，操作成功');
+				return result;
+			},
 			mapDirectoryUserRow(raw) {
-				const ut = String(raw.user_type || raw.role || raw.type || '').toLowerCase();
-				let role = 'student';
-				if (ut === 'teacher' || ut === '教师') role = 'teacher';
-				else if (ut === 'admin' || ut === 'administrator' || ut === '管理员') role = 'admin';
+				const role = this.resolveManagedUserType(raw) || 'student';
 				const sub = raw.sub ?? raw.user_id ?? raw.id ?? raw.account_id;
+				const backendUserId = raw.id ?? raw.user_id ?? raw.account_id ?? raw.sub;
 				const username = String(raw.username || raw.login || '').trim();
 				const name = String(
 					raw.full_name || raw.name || raw.nickname || username || '—'
@@ -2522,17 +2671,19 @@
 					bizId = String(raw.admin_id ?? raw.user_id ?? raw.adminId ?? username ?? sub ?? '').trim();
 				}
 				if (!bizId) bizId = username || (sub != null ? String(sub) : '');
-				const createdAtDisplay = this.formatDirectoryUserCreatedAt(
-					raw.created_at ?? raw.create_time ?? raw.createdTime
-				);
+				const createdAtRaw = raw.created_at ?? raw.create_time ?? raw.createdTime;
+				const createdAtDisplay = this.formatDirectoryUserCreatedAt(createdAtRaw);
+				const createdAtSortValue = this.parseDirectoryUserCreatedAt(createdAtRaw);
 				return {
 					sub,
+					backendUserId,
 					id: bizId || '—',
 					name: name || '—',
 					role,
 					username,
 					groupName: raw.group_name || raw.groupName || '',
-					createdAtDisplay
+					createdAtDisplay,
+					createdAtSortValue
 				};
 			},
 			/**
@@ -2592,7 +2743,7 @@
 			},
 			onSidebarHelp() {
 				uni.showToast({
-					title: '如需帮助请联系系统管理员',
+					title: '当前为论文管理系统v1.0版本',
 					icon: 'none'
 				});
 			},
@@ -3831,7 +3982,11 @@
 				// 搜索逻辑已在computed中实现
 			},
 			editUserPermission(user) {
-				this.permissionUser = user;
+				this.permissionUser = {
+					...user,
+					role: this.resolveManagedUserType(user),
+					backendUserId: this.resolveManagedUserBackendId(user)
+				};
 				this.selectedRoleIndex = -1;
 				this.newBusinessId = '';
 				this.showPermissionModal = true;
@@ -3892,16 +4047,49 @@
 			},
 			async doDeleteUser() {
 				this.showDeleteUserConfirm = false;
+				const userType = this.resolveManagedUserType(this.permissionUser);
+				const username = this.permissionUser?.id || this.permissionUser?.username;
+				console.log('[删除用户调试] permissionUser:', JSON.stringify(this.permissionUser));
+				console.log('[删除用户调试] 解析后的 userType:', userType);
+				console.log('[删除用户调试] 用于查询的用户名/学号:', username);
+				if (!username) {
+					console.error('[删除用户调试] 错误: 无法获取用户名/学号');
+					uni.showToast({ title: '缺少用户信息，无法删除', icon: 'none' });
+					return;
+				}
+				if (!userType) {
+					console.error('[删除用户调试] 错误: userType 为空');
+					uni.showToast({ title: '无法识别用户类型，删除失败', icon: 'none' });
+					return;
+				}
 				uni.showLoading({ title: '删除中...' });
 				try {
-					const { deleteUser } = await import('@/api/admin.js');
-					await deleteUser(this.permissionUser.sub, this.permissionUser.role);
+					const { getUserSubAuto, deleteUser } = await import('@/api/admin.js');
+					console.log('[删除用户调试] 步骤1: 调用 getUserSubAuto 获取真实 sub, username:', username);
+					const subResult = await getUserSubAuto(username);
+					console.log('[删除用户调试] getUserSubAuto 返回:', JSON.stringify(subResult));
+					let realSub = null;
+					if (subResult && typeof subResult === 'object') {
+						const data = subResult.data ?? subResult;
+						realSub = data?.sub ?? data?.id ?? data?.user_id ?? null;
+						console.log('[删除用户调试] 提取的数据对象:', JSON.stringify(data));
+					}
+					if (!realSub) {
+						console.error('[删除用户调试] 错误: 无法从 getUserSubAuto 获取 sub');
+						throw new Error('无法获取用户真实ID，删除失败');
+					}
+					console.log('[删除用户调试] 步骤2: 获取到真实 sub:', realSub);
+					console.log('[删除用户调试] 步骤3: 调用 deleteUser:', { realSub, userType });
+					const result = await deleteUser(realSub, userType);
+					console.log('[删除用户调试] deleteUser 返回结果:', JSON.stringify(result));
+					this.ensureActionSucceeded(result, '删除失败');
 					uni.hideLoading();
 					uni.showToast({ title: '用户已删除', icon: 'success' });
 					this.showPermissionModal = false;
 					await this.loadUserDirectory();
 				} catch (err) {
 					uni.hideLoading();
+					console.error('[删除用户调试] 异常捕获:', err);
 					uni.showToast({ title: err.message || '删除失败', icon: 'none' });
 				}
 			},
@@ -5028,10 +5216,24 @@
 					uni.hideLoading();
 				}
 			},
-			// 查询群组：有工号则按教师筛选；留空则加载全部（与占位文案一致）
+			searchGroupsNormalizeItems(result) {
+				return this.normalizeGroupListItems(result).map((item) => ({
+					id: String(item.group_id ?? item.id ?? item.code ?? ''),
+					name: String(item.group_name ?? item.name ?? '').trim(),
+					code: String(item.group_id ?? item.code ?? item.id ?? ''),
+					created_at: item.created_at || item.create_time || '',
+					active: item.status !== 'inactive',
+					teacherCount: item.teacher_count || 0,
+					studentCount: item.student_count || 0,
+					paperCount: item.paper_count || 0
+				}));
+			},
+			// 查询群组：单输入框支持教师工号格式或群组名称；留空则加载全部
 			async searchGroups() {
-				const q = (this.searchTeacherId || '').trim();
-				await this.loadGroupList(q || null);
+				const keyword = (this.groupSearchKeyword || '').trim();
+				await this.loadGroupList({
+					keyword: keyword || null
+				});
 			},
 			
 			// 加载群组成员统计信息
@@ -5086,78 +5288,48 @@
 			},
 			
 			// 加载群组列表
-			async loadGroupList(teacherId = null) {
+			async loadGroupList(filters = {}) {
 				console.log('开始加载群组列表...');
+				const keyword = typeof filters === 'object' && filters !== null
+					? ((filters.keyword || '').trim())
+					: ((filters || '').trim ? (filters || '').trim() : '');
+				const isTeacherIdSearch = /^\d+$/.test(keyword) || /^t\d+$/i.test(keyword);
+				const teacherIdValue = /^t\d+$/i.test(keyword) ? keyword : String(keyword || '');
 				try {
 					uni.showLoading({ title: '加载中...' });
 					
 					const adminInfo = await this.getOrCreateAdmin();
+					const currentUser = this.buildCurrentUserFromAdmin(adminInfo);
 					const { getGroupList } = await import('@/api/admin.js');
+					let groups = [];
 					
-					const params = { page: 1, page_size: 100 };
-					if (teacherId != null && teacherId !== '') {
-						params.teacher_id = teacherId;
-					}
-					
-					const currentUser = {
-						sub: String(adminInfo.id),
-						roles: adminInfo.roles,
-						username: String(adminInfo.username)
-					};
-					
-					const result = await getGroupList(params, currentUser);
-					console.log('接口返回结果:', result);
-					
-					let list = [];
-					if (Array.isArray(result)) {
-						list = result;
-					} else if (result && typeof result === 'object') {
-						const code = result.code;
-						if (typeof code === 'number' && code >= 400) {
-							this.groups = [];
-							this.groupOptions = [];
-							uni.showToast({
-								title: result.message || result.detail || '获取群组列表失败',
-								icon: 'none'
-							});
-							return;
-						}
-						let raw =
-							result.items ||
-							result.groups ||
-							result.list ||
-							(Array.isArray(result.results) ? result.results : null);
-						if (raw == null && result.data != null) {
-							const d = result.data;
-							raw = Array.isArray(d) ? d : d.items || d.list || d.groups || null;
-						}
-						list = Array.isArray(raw) ? raw : [];
+					if (!keyword) {
+						const result = await getGroupList({ page: 1, page_size: 100 }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
+					} else if (isTeacherIdSearch) {
+						const result = await getGroupList({ page: 1, page_size: 100, teacher_id: teacherIdValue }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
 					} else {
-						this.groups = [];
-						this.groupOptions = [];
-						uni.showToast({ title: '群组列表数据格式异常', icon: 'none' });
-						return;
+						const result = await getGroupList({ page: 1, page_size: 100, keyword }, currentUser);
+						console.log('接口返回结果:', result);
+						groups = this.searchGroupsNormalizeItems(result);
 					}
 					
-					this.groups = list.map((item) => ({
-						id: item.group_id || item.id,
-						name: item.group_name || item.name,
-						code: item.group_id || item.code,
-						created_at: item.created_at || item.create_time || '',
-						active: item.status !== 'inactive',
-						teacherCount: item.teacher_count || 0,
-						studentCount: item.student_count || 0,
-						paperCount: item.paper_count || 0
-					}));
-					
+					this.groups = groups;
 					this.groupOptions = this.groups.map((g) => ({
 						name: g.name,
 						value: g.id
 					}));
 					
 					if (this.groups.length === 0) {
+						let emptyText = '暂无群组数据';
+						if (keyword) {
+							emptyText = isTeacherIdSearch ? '该工号下暂无群组' : '未找到匹配的群组';
+						}
 						uni.showToast({
-							title: teacherId ? '该工号下暂无群组' : '暂无群组数据',
+							title: emptyText,
 							icon: 'none'
 						});
 					}
@@ -5421,10 +5593,11 @@
 			} catch (err) {
 				uni.hideLoading();
 				console.error('创建教师失败:', err);
-				// 根据错误信息判断是否为重复
 				const errMsg = err?.message || '';
 				if (errMsg.includes('已存在') || errMsg.includes('exist') || errMsg.includes('duplicate') || errMsg.includes('Conflict')) {
 					uni.showToast({ title: '该工号已存在', icon: 'none' });
+				} else if (errMsg.includes('教师username第一个字符必须') || errMsg.includes("教师 username 第一个字符必须") || (errMsg.includes('第一个字符必须') && errMsg.includes("'t' 或 'T'"))) {
+					uni.showToast({ title: "教师工号的第一个字符必须为 't' 或 'T'", icon: 'none' });
 				} else {
 					uni.showToast({ title: errMsg || '创建失败', icon: 'none' });
 				}
@@ -5458,10 +5631,11 @@
 			} catch (err) {
 				uni.hideLoading();
 				console.error('创建管理员失败:', err);
-				// 根据错误信息判断是否为重复
 				const errMsg = err?.message || '';
 				if (errMsg.includes('已存在') || errMsg.includes('exist') || errMsg.includes('duplicate') || errMsg.includes('Conflict')) {
 					uni.showToast({ title: '该账号已存在', icon: 'none' });
+				} else if (errMsg.includes('管理员username第一个字符必须') || errMsg.includes("管理员 username 第一个字符必须") || (errMsg.includes('第一个字符必须') && errMsg.includes("'a' 或 'A'"))) {
+					uni.showToast({ title: "管理员账号的第一个字符必须为 'a' 或 'A'", icon: 'none' });
 				} else {
 					uni.showToast({ title: errMsg || '创建失败', icon: 'none' });
 				}
@@ -9097,6 +9271,7 @@
 	}
 
 	.access-dir-search {
+		flex: 1;
 		display: flex;
 		align-items: center;
 		gap: 12rpx;
@@ -9104,32 +9279,57 @@
 		padding: 0 20rpx;
 		border-radius: 14rpx;
 		background: #e7e8e9;
+		transition: flex-basis 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease;
 	}
 
-	.access-dir-search-ic {
-		font-size: 34rpx;
-		color: #94a3b8;
-	}
-
-	.access-dir-search-input {
-		flex: 1;
-		min-width: 0;
-		height: 80rpx;
-		font-size: 26rpx;
-		background: transparent;
-		border: none;
-	}
-
+	.access-dir-sort-btn,
 	.access-dir-search-btn {
 		height: 80rpx;
-		padding: 0 36rpx;
 		border-radius: 14rpx;
 		font-size: 26rpx;
 		font-weight: 700;
+		border: none;
+		transition: transform 0.22s ease, opacity 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+	}
+
+	.access-dir-sort-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10rpx;
+		padding: 0 28rpx;
+		color: #0f172a;
+		background: #e2e8f0;
+		box-shadow: 0 6rpx 16rpx rgba(15, 23, 42, 0.08);
+	}
+
+	.access-dir-sort-btn-ic {
+		font-size: 30rpx;
+	}
+
+	.access-dir-search-btn {
+		padding: 0 36rpx;
 		color: #fff;
 		background: linear-gradient(135deg, #005bbf 0%, #1a73e8 100%);
-		border: none;
 		box-shadow: 0 8rpx 20rpx rgba(0, 91, 191, 0.2);
+	}
+
+	.access-dir-sort-btn:active,
+	.access-dir-search-btn:active {
+		transform: translateY(1rpx) scale(0.985);
+	}
+
+	.access-user-rows {
+		transition: opacity 0.24s ease, transform 0.24s ease;
+	}
+
+	.access-user-row {
+		transition: transform 0.24s ease, opacity 0.24s ease, box-shadow 0.24s ease;
+	}
+
+	.access-user-row--sorting {
+		opacity: 0.7;
+		transform: translateY(6rpx) scale(0.995);
 	}
 
 	.access-table-head {

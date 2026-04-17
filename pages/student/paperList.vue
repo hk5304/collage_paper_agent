@@ -421,7 +421,7 @@
   
   <!-- 修改密码弹窗 -->
   <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-    <view class="modal-content">
+    <view class="modal-content password-modal-content">
       <view class="modal-header">
         <text class="modal-title">修改密码</text>
         <text class="modal-close" @click="closePasswordModal">×</text>
@@ -4560,6 +4560,7 @@ export default {
 .modal-content .modal-header {
   display: flex;
   justify-content: space-between;
+
   align-items: center;
   padding: 30rpx;
   border-bottom: 1rpx solid #e2e8f0;
