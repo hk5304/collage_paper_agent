@@ -14,7 +14,7 @@
         </view>
       </view>
       <view class="header-right">
-        <view class="profile-btn-wrapper"
+        <view class="profile-btn-wrapper student-profile-btn"
           @mouseenter="onUserCardEnter"
           @mouseleave="onUserCardLeave">
           <view class="profile-avatar">
@@ -26,7 +26,7 @@
           </view>
           
           <!-- 用户信息卡片 -->
-          <view class="user-info-card" :class="{ show: showUserCard }" @click.stop
+          <view class="user-info-card student-user-card" :class="{ show: showUserCard }" @click.stop
             @mouseenter="onUserCardEnter"
             @mouseleave="onUserCardLeave">
             <view class="user-card-header">
@@ -34,7 +34,7 @@
                 <text>{{ userNameInitial }}</text>
               </view>
               <view class="user-card-info">
-                <text class="user-name">{{ userInfo.name }}</text>
+                <text class="user-name">{{ userInfo.full_name || userInfo.name }}</text>
                 <text class="user-id">学号：{{ userInfo.owner_id || userInfo.username || '未设置' }}</text>
                 <view class="user-role-badge">学生</view>
               </view>
@@ -44,7 +44,7 @@
                 <text class="material-symbols-outlined">lock</text>
                 <text>修改密码</text>
               </view>
-              <view class="user-card-menu-item" @click="showAboutModal = true">
+              <view class="user-card-menu-item" @click="openAboutModal">
                 <text class="material-symbols-outlined">info</text>
                 <text>关于系统</text>
               </view>
@@ -76,7 +76,7 @@
             <view 
               v-for="paper in papers" 
               :key="paper.id"
-              class="stat-item clickable" 
+              class="stat-item clickable paper-stat-item"
               @click="sortAttachmentsByPaper(paper.id)" 
               :class="{ active: activeSort === paper.id }"
             >
@@ -197,43 +197,49 @@
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-      <view class="modal-content password-modal-content">
-        <view class="modal-header">
-          <text class="modal-title">修改密码</text>
-          <text class="modal-close" @click="closePasswordModal">×</text>
+      <view class="modal-content password-modal-content student-user-panel-modal">
+        <view class="user-panel-header">
+          <text class="user-panel-title">修改密码</text>
+          <text class="user-panel-close" @click="closePasswordModal">×</text>
         </view>
-        <view class="modal-body">
-          <view class="form-item">
-            <text class="form-label">当前密码</text>
+        <view class="user-panel-body">
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">当前密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.oldPassword"
               placeholder="请输入当前密码"
             />
           </view>
-          <view class="form-item">
-            <text class="form-label">新密码</text>
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">新密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.newPassword"
               placeholder="请输入新密码（至少6位）"
             />
           </view>
-          <view class="form-item">
-            <text class="form-label">确认新密码</text>
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">确认新密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.confirmPassword"
               placeholder="请再次输入新密码"
             />
           </view>
+          <view class="user-panel-form-tips" v-if="!passwordError">
+            <text class="user-panel-tips-text">密码修改成功后需要重新登录</text>
+          </view>
+          <view class="user-panel-form-tips error-tips" v-else>
+            <text class="user-panel-tips-text error-text">{{ passwordError }}</text>
+          </view>
         </view>
-        <view class="modal-footer">
-          <view class="btn btn-cancel" @click="closePasswordModal">取消</view>
-          <view class="btn btn-confirm" @click="submitChangePassword">确认修改</view>
+        <view class="user-panel-footer">
+          <view class="user-panel-btn user-panel-btn-cancel" @click="closePasswordModal">取消</view>
+          <view class="user-panel-btn user-panel-btn-confirm" @click="submitChangePassword">确认修改</view>
         </view>
       </view>
     </view>
@@ -243,6 +249,7 @@
 <script>
 import { getUserId, isValidUserId, checkLogin } from '../../utils/auth.js';
 import { getAttachmentList, deleteAttachment, getWorkbenchData } from '../../api/student.js';
+import { config } from '../../api/config.js';
 
 import ConfirmModal from '../../components/ConfirmModal.vue';
 import { changePassword } from '../../api/student.js';
@@ -369,6 +376,14 @@ export default {
       clearTimeout(this._navigateTimer);
       this._navigateTimer = null;
     }
+    if (this._userCardShowTimer) {
+      clearTimeout(this._userCardShowTimer);
+      this._userCardShowTimer = null;
+    }
+    if (this._userCardHideTimer) {
+      clearTimeout(this._userCardHideTimer);
+      this._userCardHideTimer = null;
+    }
   },
   
   methods: {
@@ -398,6 +413,11 @@ export default {
     openChangePassword() {
       this.showUserCard = false;
       this.showPasswordModal = true;
+    },
+
+    openAboutModal() {
+      this.showUserCard = false;
+      this.showAboutModal = true;
     },
     
     // 关闭修改密码弹窗
@@ -756,13 +776,22 @@ export default {
       return 'other';
     },
     getAttachmentUrl(item) {
-      // 从 storage_path 提取文件名，拼接静态文件 URL
-      // 使用正确的 /doc/attachment/ 路径
-      const filename = (item.fileUrl || item.storage_path || '').split('/').pop();
+      // Support full URLs, static paths, and storage paths.
+      const rawPath = item.fileUrl || item.storage_path || '';
+      if (!rawPath) return '';
+
+      if (/^https?:\/\//i.test(rawPath)) {
+        return rawPath;
+      }
+
+      if (rawPath.startsWith('/doc/attachment/')) {
+        return `${config.baseURL}${encodeURI(rawPath)}`;
+      }
+
+      const filename = rawPath.split('/').pop();
       if (!filename) return '';
-      // 使用 config 中的 baseURL
-      const { config } = require('../../api/config.js');
-      return `${config.baseURL}/doc/attachment/${filename}`;
+
+      return `${config.baseURL}/doc/attachment/${encodeURIComponent(filename)}`;
     },
 
     viewAttachment(item) {
@@ -775,6 +804,11 @@ export default {
 
       const fileUrl = this.getAttachmentUrl(item);
       const ext = (item.name || '').split('.').pop().toLowerCase();
+
+      if (!fileUrl) {
+        uni.showToast({ title: '附件链接无效', icon: 'none' });
+        return;
+      }
       
       console.log('[viewAttachment] 文件URL:', fileUrl, '扩展名:', ext);
 
@@ -927,6 +961,20 @@ export default {
   /* Text Colors */
   --on-surface: #191c1d;
   --on-surface-variant: #5a5f61;
+  --outline: #727785;
+  --outline-variant: rgba(193, 198, 214, 0.15);
+
+  /* Semantic Colors */
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --on-error-container: #410002;
+  --tertiary: #006a5f;
+  --tertiary-container: #b2dfdb;
+  --on-tertiary-container: #00201c;
+  --secondary-container: #e0e2ec;
+  --on-secondary-container: #191c1d;
+  --amber-tint: #fef3c7;
+  --on-amber: #92400e;
 
   /* Shadows - Ambient light physics */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -946,6 +994,7 @@ export default {
   --spacing-4: 1rem;
   --spacing-5: 1.25rem;
   --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
 
   /* Border Radius */
   --radius-sm: 0.25rem;
@@ -1120,12 +1169,9 @@ export default {
   }
   
   /* 主内容区调整 */
-  .main-layout-wrapper {
-    padding-top: 280px;
-  }
-  
   .main-layout {
     padding-left: 0;
+    padding-top: 280px;
     padding-right: 16rpx;
   }
   
@@ -1511,6 +1557,7 @@ export default {
   background: var(--surface-bright);
   box-shadow: var(--shadow);
   padding: 24rpx;
+  overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
   z-index: 98;
@@ -1532,12 +1579,15 @@ export default {
 
 .sidebar-content {
   padding: 0;
+  min-width: 0;
 }
 
 .stats-panel {
   display: flex;
   flex-direction: column;
   gap: 20rpx;
+  width: 100%;
+  min-width: 0;
 }
 
 .stat-item {
@@ -1551,6 +1601,9 @@ export default {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .stat-item::before {
@@ -1677,6 +1730,16 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 5rpx;
+  min-width: 0;
+}
+
+.paper-stat-item .stat-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .stat-label {
@@ -2268,11 +2331,11 @@ export default {
 }
 
 .user-card-menu-item.logout {
-  color: #f44336;
+  color: var(--error);
 }
 
 .user-card-menu-item.logout:hover {
-  background: #ffebee;
+  background: var(--error-container);
 }
 
 .user-card-menu-item .material-symbols-outlined {
@@ -2281,7 +2344,7 @@ export default {
 }
 
 .user-card-menu-item.logout .material-symbols-outlined {
-  color: #f44336;
+  color: var(--error);
 }
 
 /* ===== 弹窗样式 ===== */
@@ -2319,8 +2382,31 @@ export default {
 }
 
 /* 修改密码弹窗特定样式 - 固定宽度 400px */
-.password-modal-content {
+.password-modal-content,
+.about-modal {
+  width: 90%;
   max-width: 400px !important;
+  max-height: 80vh;
+}
+
+.password-modal-content .modal-header,
+.about-modal .modal-header {
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: auto;
+}
+
+.password-modal-content .modal-body {
+  padding: var(--spacing-5);
+}
+
+.password-modal-content .modal-footer,
+.about-modal .modal-footer {
+  padding: var(--spacing-4) var(--spacing-5);
+  gap: var(--spacing-3);
+  background: var(--surface-container-low);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 @keyframes modalSlideIn {
@@ -2511,6 +2597,7 @@ export default {
 .about-title {
   font-size: 1.125rem;
   font-weight: 600;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-2);
 }
@@ -2518,6 +2605,7 @@ export default {
 .about-version {
   font-size: 0.875rem;
   font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-surface-variant);
   margin-bottom: var(--spacing-4);
 }
@@ -2525,6 +2613,384 @@ export default {
 .about-desc {
   font-size: 0.875rem;
   font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.6;
+}
+
+/* ===== 工作台同款用户菜单样式（放在文件尾部以覆盖页面通用规则） ===== */
+.student-profile-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  cursor: pointer;
+  padding: var(--spacing-1) var(--spacing-3) var(--spacing-1) var(--spacing-1);
+  border-radius: var(--radius-full);
+  transition: background 0.2s;
+}
+
+.student-profile-btn:hover {
+  background: var(--surface-container-low);
+}
+
+.student-profile-btn .profile-avatar {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.student-profile-btn .profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-profile-btn .profile-role {
+  font-size: 12px;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.student-user-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-ambient);
+  z-index: 100;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  transform-origin: top right;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.student-user-card.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.student-user-card .user-card-header {
+  padding: var(--spacing-6);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-5);
+}
+
+.student-user-card .user-card-avatar {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.student-user-card .user-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.student-user-card .user-card-info .user-name {
+  font-size: 17px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: white;
+}
+
+.student-user-card .user-card-info .user-id {
+  font-size: 13px;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.student-user-card .user-role-badge {
+  display: inline-flex;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: white;
+  width: fit-content;
+}
+
+.student-user-card .user-card-menu {
+  padding: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.student-user-card .user-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-user-card .user-card-menu-item:hover {
+  background: var(--surface-container-low);
+}
+
+.student-user-card .user-card-menu-item.logout {
+  color: var(--error);
+}
+
+.student-user-card .user-card-menu-item.logout:hover {
+  background: var(--error-container);
+}
+
+.student-user-card .user-card-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--on-surface-variant);
+}
+
+.student-user-card .user-card-menu-item.logout .material-symbols-outlined {
+  color: var(--error);
+}
+
+.student-user-panel-modal {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: var(--shadow-ambient);
+  animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.student-user-panel-modal .user-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: auto;
+}
+
+.student-user-panel-modal .user-panel-header.logout-header {
+  background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
+}
+
+.student-user-panel-modal .user-panel-header.logout-header .user-panel-title,
+.student-user-panel-modal .user-panel-header.logout-header .user-panel-close {
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-user-panel-modal .user-panel-close {
+  font-size: 1.5rem;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  transition: color 0.2s;
+}
+
+.student-user-panel-modal .user-panel-close:hover {
+  color: var(--on-surface);
+}
+
+.student-user-panel-modal .user-panel-body {
+  padding: var(--spacing-5);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.student-user-panel-modal .user-panel-footer {
+  display: flex;
+  padding: var(--spacing-4) var(--spacing-5);
+  gap: var(--spacing-3);
+  background: var(--surface-container-low);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.student-user-panel-modal .user-panel-form-item {
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-2);
+}
+
+.student-user-panel-modal .user-panel-form-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  background: var(--surface-container-low);
+  box-sizing: border-box;
+  transition: all 0.2s;
+}
+
+.student-user-panel-modal .user-panel-form-input:focus {
+  background: var(--surface-container-high);
+  outline: none;
+}
+
+.student-user-panel-modal .user-panel-form-tips {
+  margin-top: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--amber-tint);
+  border-radius: var(--radius-md);
+}
+
+.student-user-panel-modal .user-panel-form-tips.error-tips {
+  background: var(--error-container);
+}
+
+.student-user-panel-modal .user-panel-tips-text {
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-amber);
+}
+
+.student-user-panel-modal .user-panel-tips-text.error-text {
+  color: var(--on-error-container);
+}
+
+.student-user-panel-modal .user-panel-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.student-user-panel-modal .user-panel-btn-cancel {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+.student-user-panel-modal .user-panel-btn-cancel:hover {
+  background: var(--surface-container-low);
+}
+
+.student-user-panel-modal .user-panel-btn-confirm {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  color: white;
+  box-shadow: var(--shadow-primary);
+}
+
+.student-user-panel-modal .user-panel-btn-confirm:hover {
+  box-shadow: 0 6px 20px rgba(0, 91, 191, 0.35);
+  transform: translateY(-1px);
+}
+
+.student-user-panel-modal .user-panel-btn-logout {
+  background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-btn-logout:hover {
+  box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);
+}
+
+.student-user-panel-modal .user-panel-about-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  text-align: center;
+}
+
+.student-user-panel-modal .user-panel-about-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-about-icon .material-symbols-outlined {
+  font-size: 32px;
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-about-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-2);
+}
+
+.student-user-panel-modal .user-panel-about-version {
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-about-desc {
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.6;
 }

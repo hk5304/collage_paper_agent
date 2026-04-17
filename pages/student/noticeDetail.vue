@@ -14,7 +14,7 @@
         </view>
       </view>
       <view class="header-right">
-        <view class="profile-btn-wrapper"
+        <view class="profile-btn-wrapper student-profile-btn"
           @mouseenter="onUserCardEnter"
           @mouseleave="onUserCardLeave">
           <view class="profile-avatar">
@@ -26,7 +26,7 @@
           </view>
           
           <!-- 用户信息卡片 -->
-          <view class="user-info-card" :class="{ show: showUserCard }" @click.stop
+          <view class="user-info-card student-user-card" :class="{ show: showUserCard }" @click.stop
             @mouseenter="onUserCardEnter"
             @mouseleave="onUserCardLeave">
             <view class="user-card-header">
@@ -34,7 +34,7 @@
                 <text>{{ userNameInitial }}</text>
               </view>
               <view class="user-card-info">
-                <text class="user-name">{{ userInfo.name }}</text>
+                <text class="user-name">{{ userInfo.full_name || userInfo.name }}</text>
                 <text class="user-id">学号：{{ userInfo.owner_id || userInfo.username || '未设置' }}</text>
                 <view class="user-role-badge">学生</view>
               </view>
@@ -44,7 +44,7 @@
                 <text class="material-symbols-outlined">lock</text>
                 <text>修改密码</text>
               </view>
-              <view class="user-card-menu-item" @click="showAboutModal = true">
+              <view class="user-card-menu-item" @click="openAboutModal">
                 <text class="material-symbols-outlined">info</text>
                 <text>关于系统</text>
               </view>
@@ -207,43 +207,43 @@
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-      <view class="modal-content password-modal-content">
-        <view class="modal-header">
-          <text class="modal-title">修改密码</text>
-          <text class="modal-close" @click="closePasswordModal">×</text>
+      <view class="modal-content password-modal-content student-user-panel-modal">
+        <view class="user-panel-header">
+          <text class="user-panel-title">修改密码</text>
+          <text class="user-panel-close" @click="closePasswordModal">×</text>
         </view>
-        <view class="modal-body">
-          <view class="form-item">
-            <text class="form-label">当前密码</text>
+        <view class="user-panel-body">
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">当前密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.oldPassword"
               placeholder="请输入当前密码"
             />
           </view>
-          <view class="form-item">
-            <text class="form-label">新密码</text>
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">新密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.newPassword"
               placeholder="请输入新密码（至少6位）"
             />
           </view>
-          <view class="form-item">
-            <text class="form-label">确认新密码</text>
+          <view class="user-panel-form-item">
+            <text class="user-panel-form-label">确认新密码</text>
             <input 
-              class="form-input" 
+              class="user-panel-form-input"
               type="password" 
               v-model="passwordForm.confirmPassword"
               placeholder="请再次输入新密码"
             />
           </view>
         </view>
-        <view class="modal-footer">
-          <view class="btn btn-cancel" @click="closePasswordModal">取消</view>
-          <view class="btn btn-confirm" @click="submitChangePassword">确认修改</view>
+        <view class="user-panel-footer">
+          <view class="user-panel-btn user-panel-btn-cancel" @click="closePasswordModal">取消</view>
+          <view class="user-panel-btn user-panel-btn-confirm" @click="submitChangePassword">确认修改</view>
         </view>
       </view>
     </view>
@@ -325,6 +325,16 @@ export default {
       uni.removeStorageSync('currentNoticeDetail');
     }
   },
+  onUnload() {
+    if (this._userCardShowTimer) {
+      clearTimeout(this._userCardShowTimer);
+      this._userCardShowTimer = null;
+    }
+    if (this._userCardHideTimer) {
+      clearTimeout(this._userCardHideTimer);
+      this._userCardHideTimer = null;
+    }
+  },
   methods: {
     // 用户卡片鼠标进入（延迟显示）
     onUserCardEnter() {
@@ -352,6 +362,11 @@ export default {
     openChangePassword() {
       this.showUserCard = false;
       this.showPasswordModal = true;
+    },
+
+    openAboutModal() {
+      this.showUserCard = false;
+      this.showAboutModal = true;
     },
     
     // 关闭修改密码弹窗
@@ -589,14 +604,21 @@ export default {
   
   /* Text Colors */
   --on-surface: #191c1d;
-  --on-surface-variant: #5f6368;
+  --on-surface-variant: #5a5f61;
   --outline: #727785;
+  --outline-variant: rgba(193, 198, 214, 0.15);
   
   /* Semantic Colors */
   --error: #ba1a1a;
   --error-container: #ffdad6;
+  --on-error-container: #410002;
   --tertiary: #006a5f;
   --tertiary-container: #b2dfdb;
+  --on-tertiary-container: #00201c;
+  --secondary-container: #e0e2ec;
+  --on-secondary-container: #191c1d;
+  --amber-tint: #fef3c7;
+  --on-amber: #92400e;
   
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -614,8 +636,10 @@ export default {
   --spacing-2: 0.5rem;
   --spacing-3: 0.75rem;
   --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
   --spacing-6: 1.5rem;
   --spacing-8: 2rem;
+  --spacing-12: 3rem;
   
   /* Border Radius */
   --radius-sm: 0.25rem;
@@ -1105,22 +1129,32 @@ export default {
 }
 
 /* 修改密码弹窗特定样式 - 固定宽度 400px */
-.password-modal-content {
+.password-modal-content,
+.about-modal {
+  width: 90%;
   max-width: 400px !important;
+  max-height: 80vh;
 }
 
-/* 修改密码弹窗内部元素样式统一 */
-.password-modal-content .modal-header {
+/* 修改密码与关于系统弹窗样式统一为工作台风格 */
+.password-modal-content .user-panel-header,
+.about-modal .user-panel-header {
   padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   min-height: auto;
 }
 
-.password-modal-content .modal-body {
+.password-modal-content .user-panel-body {
   padding: var(--spacing-5);
 }
 
-.password-modal-content .modal-footer {
+.password-modal-content .user-panel-footer,
+.about-modal .user-panel-footer {
   padding: var(--spacing-4) var(--spacing-5);
+  gap: var(--spacing-3);
+  background: var(--surface-container-low);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 @keyframes modalSlideIn {
@@ -1873,11 +1907,11 @@ export default {
 }
 
 .user-card-menu-item.logout {
-  color: #f44336;
+  color: var(--error);
 }
 
 .user-card-menu-item.logout:hover {
-  background: #ffebee;
+  background: var(--error-container);
 }
 
 .user-card-menu-item .material-symbols-outlined {

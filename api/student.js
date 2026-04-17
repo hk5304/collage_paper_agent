@@ -581,11 +581,11 @@ export function getPaperDetail(paperId) {
   const userInfo = uni.getStorageSync('userInfo') || {};
   const numericUserId = parseInt(userInfo.sub || 0, 10);
   
-  const currentUser = encodeURIComponent(JSON.stringify({
+  const currentUser = JSON.stringify({
     sub: numericUserId,
-    username: userInfo.username || '',
+    username: userInfo.username || userInfo.name || '',
     roles: ['student']
-  }));
+  });
   
   return get(`/api/v1/papers/${paperId}`, { current_user: currentUser });
 }

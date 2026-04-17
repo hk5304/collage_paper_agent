@@ -14,7 +14,7 @@
         </view>
       </view>
       <view class="header-right">
-        <view class="profile-btn-wrapper"
+        <view class="profile-btn-wrapper student-profile-btn"
           @mouseenter="onUserCardEnter"
           @mouseleave="onUserCardLeave">
           <view class="profile-avatar">
@@ -26,7 +26,7 @@
           </view>
           
           <!-- 用户信息卡片 -->
-          <view class="user-info-card" :class="{ show: showUserCard }" @click.stop
+          <view class="user-info-card student-user-card" :class="{ show: showUserCard }" @click.stop
             @mouseenter="onUserCardEnter"
             @mouseleave="onUserCardLeave">
             <view class="user-card-header">
@@ -34,7 +34,7 @@
                 <text>{{ userNameInitial }}</text>
               </view>
               <view class="user-card-info">
-                <text class="user-name">{{ userInfo.name }}</text>
+                <text class="user-name">{{ userInfo.full_name || userInfo.name }}</text>
                 <text class="user-id">学号：{{ userInfo.owner_id || userInfo.username || '未设置' }}</text>
                 <view class="user-role-badge">学生</view>
               </view>
@@ -44,7 +44,7 @@
                 <text class="material-symbols-outlined">lock</text>
                 <text>修改密码</text>
               </view>
-              <view class="user-card-menu-item" @click="showAboutModal = true">
+              <view class="user-card-menu-item" @click="openAboutModal">
                 <text class="material-symbols-outlined">info</text>
                 <text>关于系统</text>
               </view>
@@ -137,7 +137,7 @@
                 <text class="paper-title">{{ paper.title }}<text class="paper-preview-hint"> 点击预览 👁</text></text>
                 <text class="paper-meta">指导教师：{{ paper.teacher }} | 版本：v{{ paper.version }} | 论文ID：{{ paper.id }}</text>
               </view>
-              <view class="header-right" @click.prevent.stop>
+              <view class="paper-header-actions" @click.prevent.stop>
                 <view class="refresh-status-btn" @click.prevent.stop="fetchAllPaperStatus">
                   <text class="refresh-text">获取状态</text>
                 </view>
@@ -368,7 +368,6 @@
       @confirm="handleConfirmModalConfirm"
       @cancel="handleConfirmModalCancel"
     />
-  </view>
 
   <!-- 审阅详情弹窗 - 放在最外层避免受父元素transform影响 -->
   <view class="review-modal" v-if="showReviewModal" @click="closeReviewModal">
@@ -421,43 +420,43 @@
   
   <!-- 修改密码弹窗 -->
   <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
-    <view class="modal-content password-modal-content">
-      <view class="modal-header">
-        <text class="modal-title">修改密码</text>
-        <text class="modal-close" @click="closePasswordModal">×</text>
+    <view class="modal-content password-modal-content student-user-panel-modal">
+      <view class="user-panel-header">
+        <text class="user-panel-title">修改密码</text>
+        <text class="user-panel-close" @click="closePasswordModal">×</text>
       </view>
-      <view class="modal-body">
-        <view class="form-item">
-          <text class="form-label">当前密码</text>
+      <view class="user-panel-body">
+        <view class="user-panel-form-item">
+          <text class="user-panel-form-label">当前密码</text>
           <input 
-            class="form-input" 
+            class="user-panel-form-input"
             type="password" 
             v-model="passwordForm.oldPassword"
             placeholder="请输入当前密码"
           />
         </view>
-        <view class="form-item">
-          <text class="form-label">新密码</text>
+        <view class="user-panel-form-item">
+          <text class="user-panel-form-label">新密码</text>
           <input 
-            class="form-input" 
+            class="user-panel-form-input"
             type="password" 
             v-model="passwordForm.newPassword"
             placeholder="请输入新密码（至少6位）"
           />
         </view>
-        <view class="form-item">
-          <text class="form-label">确认新密码</text>
+        <view class="user-panel-form-item">
+          <text class="user-panel-form-label">确认新密码</text>
           <input 
-            class="form-input" 
+            class="user-panel-form-input"
             type="password" 
             v-model="passwordForm.confirmPassword"
             placeholder="请再次输入新密码"
           />
         </view>
       </view>
-      <view class="modal-footer">
-        <view class="btn btn-cancel" @click="closePasswordModal">取消</view>
-        <view class="btn btn-confirm" @click="submitChangePassword">确认修改</view>
+      <view class="user-panel-footer">
+        <view class="user-panel-btn user-panel-btn-cancel" @click="closePasswordModal">取消</view>
+        <view class="user-panel-btn user-panel-btn-confirm" @click="submitChangePassword">确认修改</view>
       </view>
     </view>
   </view>
@@ -477,6 +476,7 @@ import {
 import WordPreview from '../../components/WordPreview.vue';
 import ConfirmModal from '../../components/ConfirmModal.vue';
 import { changePassword } from '../../api/student.js';
+import { config } from '../../api/config.js';
 import { clearLoginState } from '../../utils/auth.js';
 
 export default {
@@ -647,6 +647,14 @@ export default {
       clearTimeout(this._scrollTimer);
       this._scrollTimer = null;
     }
+    if (this._userCardShowTimer) {
+      clearTimeout(this._userCardShowTimer);
+      this._userCardShowTimer = null;
+    }
+    if (this._userCardHideTimer) {
+      clearTimeout(this._userCardHideTimer);
+      this._userCardHideTimer = null;
+    }
   },
   
   methods: {
@@ -676,6 +684,11 @@ export default {
     openChangePassword() {
       this.showUserCard = false;
       this.showPasswordModal = true;
+    },
+
+    openAboutModal() {
+      this.showUserCard = false;
+      this.showAboutModal = true;
     },
     
     // 关闭修改密码弹窗
@@ -1702,12 +1715,56 @@ export default {
     /**
      * 从 oss_key 构建静态文件 URL
      */
-    getFileUrl(ossKey) {
-      if (!ossKey) return '';
-      const filename = ossKey.split('/').pop();
-      // 修复路径：使用正确的 /doc/essay/ 路径
-      const { config } = require('../../api/config.js');
-      return `${config.baseURL}/doc/essay/${filename}`;
+    getFileUrl(rawPath) {
+      if (!rawPath) return '';
+
+      if (/^https?:\/\//i.test(rawPath)) {
+        return rawPath;
+      }
+
+      if (rawPath.startsWith('/doc/essay/')) {
+        return `${config.baseURL}${encodeURI(rawPath)}`;
+      }
+
+      const filename = rawPath.split('/').pop();
+      if (!filename) return '';
+
+      return `${config.baseURL}/doc/essay/${encodeURIComponent(filename)}`;
+    },
+
+    /**
+     * 通过论文详情接口获取最新文件信息，并同步回列表
+     */
+    async fetchPaperDetailForAction(paper) {
+      const detail = await getPaperDetail(paper.id);
+      if (!detail?.id) {
+        throw new Error('获取论文详情失败');
+      }
+
+      const normalizedStatus = (detail.status || '').toLowerCase().trim();
+      const mergedPaper = {
+        ...paper,
+        oss_key: detail.oss_key || paper.oss_key || '',
+        pdf_oss_key: detail.pdf_oss_key || paper.pdf_oss_key || '',
+        version: String(detail.version || paper.version || '1.0').replace(/^v/i, ''),
+        updateTime: detail.updated_at || paper.updateTime || '暂无更新时间',
+        fileUrl: detail.oss_key || detail.pdf_oss_key || paper.fileUrl || ''
+      };
+
+      if (normalizedStatus) {
+        mergedPaper.status = normalizedStatus;
+        mergedPaper.statusText = this.formatStatusText(detail.status);
+        mergedPaper.statusHistory = this.buildStatusHistory(detail);
+      }
+
+      const index = this.paperList.findIndex(item => item.id === paper.id);
+      if (index !== -1) {
+        Object.keys(mergedPaper).forEach(key => {
+          this.$set(this.paperList[index], key, mergedPaper[key]);
+        });
+      }
+
+      return mergedPaper;
     },
 
     /**
@@ -1721,14 +1778,44 @@ export default {
         return;
       }
 
-      // 检查论文是否为本地模拟数据（没有oss_key的是模拟数据）
-      const hasRealFile = paper.oss_key;
-      console.log('[viewPaper] 是否有真实文件:', hasRealFile, 'oss_key:', paper.oss_key);
-      
+      let previewWindow = null;
+      // #ifdef H5
+      previewWindow = window.open('', '_blank');
+      if (previewWindow) {
+        previewWindow.document.write('<title>论文预览加载中</title><p style="padding:24px;font-family:Arial,sans-serif;color:#333;">正在加载论文预览...</p>');
+      }
+      // #endif
+
+      uni.showLoading({ title: '加载论文中...', mask: true });
+
+      let paperDetail = paper;
+      try {
+        paperDetail = await this.fetchPaperDetailForAction(paper);
+      } catch (error) {
+        console.error('[viewPaper] 获取论文详情失败:', error);
+        // #ifdef H5
+        if (previewWindow) {
+          previewWindow.close();
+        }
+        // #endif
+        uni.hideLoading();
+        uni.showToast({ title: error.message || '获取论文详情失败', icon: 'none', duration: 1800 });
+        return;
+      }
+
+      const hasRealFile = paperDetail.oss_key || paperDetail.pdf_oss_key;
+      console.log('[viewPaper] 是否有真实文件:', hasRealFile, '详情:', paperDetail);
+
       if (!hasRealFile) {
+        // #ifdef H5
+        if (previewWindow) {
+          previewWindow.close();
+        }
+        // #endif
+        uni.hideLoading();
         uni.showModal({
           title: '提示',
-          content: '该论文为演示数据，无法预览。请先上传真实论文文件。',
+          content: '该论文暂无可预览文件，请稍后重试或下载源文件查看。',
           showCancel: false,
           confirmText: '知道了'
         });
@@ -1736,25 +1823,45 @@ export default {
       }
 
       // 预览优先使用 PDF 版本
-      console.log('[viewPaper] pdf_oss_key:', paper.pdf_oss_key);
-      if (!paper.pdf_oss_key) {
+      console.log('[viewPaper] pdf_oss_key:', paperDetail.pdf_oss_key);
+      if (!paperDetail.pdf_oss_key) {
+        // #ifdef H5
+        if (previewWindow) {
+          previewWindow.close();
+        }
+        // #endif
+        uni.hideLoading();
         uni.showModal({
           title: '提示',
           content: '该论文暂无 PDF 版本，是否下载 Word 版本查看？',
           confirmText: '下载',
           cancelText: '取消',
           success: (res) => {
-            if (res.confirm) this.downloadPaper(paper);
+            if (res.confirm) this.downloadPaper(paperDetail);
           }
         });
         return;
       }
 
-      const fileUrl = this.getFileUrl(paper.pdf_oss_key);
+      const fileUrl = this.getFileUrl(paperDetail.pdf_oss_key);
+      if (!fileUrl) {
+        // #ifdef H5
+        if (previewWindow) {
+          previewWindow.close();
+        }
+        // #endif
+        uni.hideLoading();
+        uni.showToast({ title: '论文预览链接无效', icon: 'none', duration: 1500 });
+        return;
+      }
       console.log('[viewPaper] 预览PDF URL:', fileUrl);
 
       // #ifdef H5
-      window.open(fileUrl, '_blank');
+      if (previewWindow) {
+        previewWindow.location.href = fileUrl;
+      } else {
+        window.open(fileUrl, '_blank');
+      }
       // #endif
       // #ifndef H5
       uni.downloadFile({
@@ -1766,6 +1873,7 @@ export default {
         }
       });
       // #endif
+      uni.hideLoading();
     },
     
     /**
@@ -1851,8 +1959,22 @@ export default {
         return;
       }
 
-      if (!paper.oss_key) {
-        console.log('[downloadPaper] 论文没有oss_key，是演示数据');
+      uni.showLoading({ title: '加载论文中...', mask: true });
+
+      let paperDetail = paper;
+      try {
+        paperDetail = await this.fetchPaperDetailForAction(paper);
+      } catch (error) {
+        console.error('[downloadPaper] 获取论文详情失败:', error);
+        uni.hideLoading();
+        uni.showToast({ title: error.message || '获取论文详情失败', icon: 'none' });
+        return;
+      }
+
+      uni.hideLoading();
+
+      if (!paperDetail.oss_key) {
+        console.log('[downloadPaper] 论文没有oss_key，详情:', paperDetail);
         this.showConfirm('提示', '该论文为演示数据，无法下载。请先上传真实论文文件。', (confirmed) => {
           // 只是提示，不需要处理确认结果
         });
@@ -1860,12 +1982,16 @@ export default {
       }
 
       // 下载使用 Word (docx) 版本
-      const fileUrl = this.getFileUrl(paper.oss_key);
-      const downloadName = `${paper.title || '论文'}.docx`;
+      const fileUrl = this.getFileUrl(paperDetail.oss_key);
+      if (!fileUrl) {
+        uni.showToast({ title: '论文下载链接无效', icon: 'none' });
+        return;
+      }
+      const downloadName = `${paperDetail.title || '论文'}.docx`;
       
       console.log('[downloadPaper] 下载URL:', fileUrl, '文件名:', downloadName);
 
-      this.showConfirm('下载确认', `即将下载论文《${paper.title}》，是否继续？`, async (confirmed) => {
+      this.showConfirm('下载确认', `即将下载论文《${paperDetail.title}》，是否继续？`, async (confirmed) => {
         if (!confirmed) {
           console.log('[downloadPaper] 用户取消下载');
           return;
@@ -2143,6 +2269,20 @@ export default {
   /* Text Colors */
   --on-surface: #191c1d;
   --on-surface-variant: #5a5f61;
+  --outline: #727785;
+  --outline-variant: rgba(193, 198, 214, 0.15);
+
+  /* Semantic Colors */
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --on-error-container: #410002;
+  --tertiary: #006a5f;
+  --tertiary-container: #b2dfdb;
+  --on-tertiary-container: #00201c;
+  --secondary-container: #e0e2ec;
+  --on-secondary-container: #191c1d;
+  --amber-tint: #fef3c7;
+  --on-amber: #92400e;
 
   /* Shadows - Ambient light physics */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -2162,6 +2302,7 @@ export default {
   --spacing-4: 1rem;
   --spacing-5: 1.25rem;
   --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
 
   /* Border Radius */
   --radius-sm: 0.25rem;
@@ -2264,7 +2405,7 @@ export default {
   margin-top: 2px;
 }
 
-.header-right {
+.top-header .header-right {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -2953,7 +3094,7 @@ export default {
 }
 
 /* 头部右侧区域（获取状态按钮+折叠按钮） */
-.header-right {
+.paper-header-actions {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -4258,7 +4399,7 @@ export default {
     gap: 12rpx;
   }
   
-  .header-right {
+  .paper-header-actions {
     width: 100%;
     justify-content: flex-end;
   }
@@ -4498,11 +4639,11 @@ export default {
 }
 
 .user-card-menu-item.logout {
-  color: #f44336;
+  color: var(--error);
 }
 
 .user-card-menu-item.logout:hover {
-  background: #ffebee;
+  background: var(--error-container);
 }
 
 .user-card-menu-item .material-symbols-outlined {
@@ -4511,7 +4652,7 @@ export default {
 }
 
 .user-card-menu-item.logout .material-symbols-outlined {
-  color: #f44336;
+  color: var(--error);
 }
 
 /* ===== 弹窗样式 ===== */
@@ -4710,6 +4851,7 @@ export default {
 .about-title {
   font-size: 1.125rem;
   font-weight: 600;
+  font-family: var(--font-body);
   color: var(--on-surface);
   margin-bottom: var(--spacing-2);
 }
@@ -4717,6 +4859,7 @@ export default {
 .about-version {
   font-size: 0.875rem;
   font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-surface-variant);
   margin-bottom: var(--spacing-4);
 }
@@ -4724,6 +4867,384 @@ export default {
 .about-desc {
   font-size: 0.875rem;
   font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.6;
+}
+
+/* ===== 工作台同款用户菜单样式（放在文件尾部以覆盖页面通用规则） ===== */
+.student-profile-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  cursor: pointer;
+  padding: var(--spacing-1) var(--spacing-3) var(--spacing-1) var(--spacing-1);
+  border-radius: var(--radius-full);
+  transition: background 0.2s;
+}
+
+.student-profile-btn:hover {
+  background: var(--surface-container-low);
+}
+
+.student-profile-btn .profile-avatar {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.student-profile-btn .profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-profile-btn .profile-role {
+  font-size: 12px;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.student-user-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-ambient);
+  z-index: 100;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  transform-origin: top right;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.student-user-card.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.student-user-card .user-card-header {
+  padding: var(--spacing-6);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-5);
+}
+
+.student-user-card .user-card-avatar {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.student-user-card .user-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.student-user-card .user-card-info .user-name {
+  font-size: 17px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: white;
+}
+
+.student-user-card .user-card-info .user-id {
+  font-size: 13px;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.student-user-card .user-role-badge {
+  display: inline-flex;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: white;
+  width: fit-content;
+}
+
+.student-user-card .user-card-menu {
+  padding: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.student-user-card .user-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-user-card .user-card-menu-item:hover {
+  background: var(--surface-container-low);
+}
+
+.student-user-card .user-card-menu-item.logout {
+  color: var(--error);
+}
+
+.student-user-card .user-card-menu-item.logout:hover {
+  background: var(--error-container);
+}
+
+.student-user-card .user-card-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--on-surface-variant);
+}
+
+.student-user-card .user-card-menu-item.logout .material-symbols-outlined {
+  color: var(--error);
+}
+
+.student-user-panel-modal {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: var(--shadow-ambient);
+  animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.student-user-panel-modal .user-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: auto;
+}
+
+.student-user-panel-modal .user-panel-header.logout-header {
+  background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
+}
+
+.student-user-panel-modal .user-panel-header.logout-header .user-panel-title,
+.student-user-panel-modal .user-panel-header.logout-header .user-panel-close {
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.student-user-panel-modal .user-panel-close {
+  font-size: 1.5rem;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  transition: color 0.2s;
+}
+
+.student-user-panel-modal .user-panel-close:hover {
+  color: var(--on-surface);
+}
+
+.student-user-panel-modal .user-panel-body {
+  padding: var(--spacing-5);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.student-user-panel-modal .user-panel-footer {
+  display: flex;
+  padding: var(--spacing-4) var(--spacing-5);
+  gap: var(--spacing-3);
+  background: var(--surface-container-low);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.student-user-panel-modal .user-panel-form-item {
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-2);
+}
+
+.student-user-panel-modal .user-panel-form-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 var(--spacing-4);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  background: var(--surface-container-low);
+  box-sizing: border-box;
+  transition: all 0.2s;
+}
+
+.student-user-panel-modal .user-panel-form-input:focus {
+  background: var(--surface-container-high);
+  outline: none;
+}
+
+.student-user-panel-modal .user-panel-form-tips {
+  margin-top: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--amber-tint);
+  border-radius: var(--radius-md);
+}
+
+.student-user-panel-modal .user-panel-form-tips.error-tips {
+  background: var(--error-container);
+}
+
+.student-user-panel-modal .user-panel-tips-text {
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-amber);
+}
+
+.student-user-panel-modal .user-panel-tips-text.error-text {
+  color: var(--on-error-container);
+}
+
+.student-user-panel-modal .user-panel-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.student-user-panel-modal .user-panel-btn-cancel {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+.student-user-panel-modal .user-panel-btn-cancel:hover {
+  background: var(--surface-container-low);
+}
+
+.student-user-panel-modal .user-panel-btn-confirm {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  color: white;
+  box-shadow: var(--shadow-primary);
+}
+
+.student-user-panel-modal .user-panel-btn-confirm:hover {
+  box-shadow: 0 6px 20px rgba(0, 91, 191, 0.35);
+  transform: translateY(-1px);
+}
+
+.student-user-panel-modal .user-panel-btn-logout {
+  background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-btn-logout:hover {
+  box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);
+}
+
+.student-user-panel-modal .user-panel-about-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  text-align: center;
+}
+
+.student-user-panel-modal .user-panel-about-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-about-icon .material-symbols-outlined {
+  font-size: 32px;
+  color: white;
+}
+
+.student-user-panel-modal .user-panel-about-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-2);
+}
+
+.student-user-panel-modal .user-panel-about-version {
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  margin-bottom: var(--spacing-4);
+}
+
+.student-user-panel-modal .user-panel-about-desc {
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.6;
 }
