@@ -2,3 +2,5 @@
 /.vscode
 /.qoder
 /.vs
+/deploy
+*.sh
