@@ -420,35 +420,44 @@
     </view>
     
     <!-- 修改密码弹窗 -->
-    <view v-if="showPasswordModal" class="custom-modal-mask" @click="closePasswordModal">
-      <view class="custom-modal-content password-change-modal" @click.stop>
-        <view class="custom-modal-header">
-          <text class="material-symbols-outlined">lock</text>
-          <text>修改密码</text>
+    <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
+      <view class="modal-content password-modal-content">
+        <view class="modal-header">
+          <text class="modal-title">修改密码</text>
+          <text class="modal-close" @click="closePasswordModal">×</text>
         </view>
-        <view class="password-modal-body">
-          <view class="pwd-form-item">
-            <text class="pwd-form-label">当前密码</text>
-            <input class="pwd-form-input" v-model="passwordForm.oldPassword" placeholder="请输入当前密码" type="password" password />
+        <view class="modal-body">
+          <view class="form-item">
+            <text class="form-label">当前密码</text>
+            <input 
+              class="form-input" 
+              type="password" 
+              v-model="passwordForm.oldPassword"
+              placeholder="请输入当前密码"
+            />
           </view>
-          <view class="pwd-form-item">
-            <text class="pwd-form-label">新密码</text>
-            <input class="pwd-form-input" v-model="passwordForm.newPassword" placeholder="请输入新密码（至少6位）" type="password" password />
+          <view class="form-item">
+            <text class="form-label">新密码</text>
+            <input 
+              class="form-input" 
+              type="password" 
+              v-model="passwordForm.newPassword"
+              placeholder="请输入新密码（至少6位）"
+            />
           </view>
-          <view class="pwd-form-item">
-            <text class="pwd-form-label">确认新密码</text>
-            <input class="pwd-form-input"
-              :class="{ 'pwd-input-error': passwordError }"
+          <view class="form-item">
+            <text class="form-label">确认新密码</text>
+            <input 
+              class="form-input" 
+              type="password" 
               v-model="passwordForm.confirmPassword"
               placeholder="请再次输入新密码"
-              type="password" password
-              @input="passwordError = ''"/>
-            <text v-if="passwordError" class="pwd-error-tip">{{ passwordError }}</text>
+            />
           </view>
         </view>
-        <view class="custom-modal-footer">
-          <view class="modal-btn cancel" @click="closePasswordModal">取消</view>
-          <view class="modal-btn confirm" @click="submitChangePassword">确认修改</view>
+        <view class="modal-footer">
+          <view class="btn btn-cancel" @click="closePasswordModal">取消</view>
+          <view class="btn btn-confirm" @click="submitChangePassword">确认修改</view>
         </view>
       </view>
     </view>
@@ -1111,7 +1120,7 @@
 					newPassword: '',
 					confirmPassword: ''
 				},
-				passwordError: '', // 密码内嵌错误提示
+				passwordError: '',
 				// 定稿确认弹窗
 				showFinalizeConfirmModal: false,
 				finalizeConfirmPaper: null,
@@ -6634,10 +6643,9 @@
 			goToProfile() {
 				uni.navigateTo({url: '/pages/teacher/profile'});
 			},
-			// 打开修改密码弹窗
+			// 跳转到修改密码页面
 			openChangePassword() {
 				this.showUserCard = false;
-				this.passwordForm = { oldPassword: '', newPassword: '', confirmPassword: '' };
 				this.showPasswordModal = true;
 			},
 			// 关闭修改密码弹窗
@@ -6649,28 +6657,59 @@
 			// 提交修改密码
 			async submitChangePassword() {
 				const { oldPassword, newPassword, confirmPassword } = this.passwordForm;
-				this.passwordError = '';
+				
+				// 密码表单验证
 				if (!oldPassword) {
-					return uni.showToast({ title: '请输入当前密码', icon: 'none' });
-				}
-				if (!newPassword) {
-					return uni.showToast({ title: '请输入新密码', icon: 'none' });
-				}
-				if (newPassword.length < 6) {
-					return uni.showToast({ title: '密码至少6位', icon: 'none' });
-				}
-				if (newPassword !== confirmPassword) {
-					this.passwordError = '两次密码不一致，请重新输入';
+					this.passwordError = '请输入当前密码';
 					return;
 				}
+				if (!newPassword) {
+					this.passwordError = '请输入新密码';
+					return;
+				}
+				if (newPassword.length < 6) {
+					this.passwordError = '新密码长度不能少于6位';
+					return;
+				}
+				if (newPassword !== confirmPassword) {
+					this.passwordError = '两次输入的新密码不一致';
+					return;
+				}
+				if (oldPassword === newPassword) {
+					this.passwordError = '新密码不能与当前密码相同';
+					return;
+				}
+				
+				this.passwordError = '';
+				
 				try {
-					const { changePassword } = await import('@/api/user.js');
-					await changePassword({ old_password: oldPassword, new_password: newPassword });
-					uni.showToast({ title: '密码修改成功', icon: 'success' });
-					this.closePasswordModal();
+					if (process.env.NODE_ENV === 'development') {
+						console.log('[ChangePassword] 开始修改密码');
+					}
+					
+					uni.showLoading({ title: '修改中...', mask: true });
+					
+					const res = await changePassword({
+						old_password: oldPassword,
+						new_password: newPassword
+					});
+					
+					uni.hideLoading();
+					
+					// 判断修改成功
+					if (res && (res.message?.includes('成功') || res.code === 200)) {
+						uni.showToast({ title: '密码修改成功，请重新登录', icon: 'success', duration: 2000 });
+						this.closePasswordModal();
+						setTimeout(() => {
+							logout();
+							uni.reLaunch({url: '/pages/index/index'});
+						}, 2000);
+					} else {
+						this.passwordError = res?.detail || res?.message || '密码修改失败';
+					}
 				} catch (err) {
-					console.error('修改密码失败:', err);
-					uni.showToast({ title: err?.message || '修改失败，请重试', icon: 'none' });
+					uni.hideLoading();
+					this.passwordError = err?.message || err?.detail || '密码修改失败，请检查输入后重试';
 				}
 			},
 			// 显示退出确认对话框
@@ -7869,6 +7908,134 @@
 
 .modal-btn.confirm.danger:hover {
   background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* 修改密码弹窗样式 - 与学生页面保持一致 */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
+.password-modal-content .modal-body {
+  padding: var(--spacing-8);
+}
+
+.password-modal-content .form-item {
+  margin-bottom: var(--spacing-6);
+}
+
+.password-modal-content .form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-3);
+  font-family: var(--font-body);
+}
+
+.password-modal-content .form-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--spacing-4);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-family: var(--font-body);
+  background: var(--surface-container-lowest);
+  transition: all 0.2s ease;
+}
+
+.password-modal-content .form-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 91, 191, 0.1);
+  outline: none;
+}
+
+.password-modal-content .form-tips {
+  margin-top: var(--spacing-5);
+  padding: var(--spacing-4);
+  background: var(--amber-tint);
+  border-radius: var(--radius-md);
+}
+
+.password-modal-content .form-tips.error-tips {
+  background: var(--error-container);
+}
+
+.password-modal-content .tips-text {
+  font-size: 0.875rem;
+  color: var(--on-amber);
+}
+
+.password-modal-content .tips-text.error-text {
+  color: var(--on-error-container);
+}
+
+.password-modal-content .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: 56px;
+}
+
+.password-modal-content .modal-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.password-modal-content .modal-close {
+  font-size: 1.5rem;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+}
+
+.password-modal-content .modal-close:hover {
+  color: var(--on-surface);
+  background: var(--surface-container-high);
+}
+
+.password-modal-content .modal-footer {
+  display: flex;
+  border-top: 1px solid var(--surface-container-high);
+}
+
+.password-modal-content .btn {
+  flex: 1;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.password-modal-content .btn-cancel {
+  color: var(--on-surface-variant);
+  border-right: 1px solid var(--surface-container-high);
+}
+
+.password-modal-content .btn-cancel:hover {
+  background: #f0f0f0;
+}
+
+.password-modal-content .btn-confirm {
+  color: var(--primary);
+}
+
+.password-modal-content .btn-confirm:hover {
+  background: rgba(0, 91, 191, 0.08);
 }
 
 /* 审阅弹窗样式 */

@@ -1,34 +1,25 @@
 {
-  "hash": "8b500eb5",
-  "configHash": "09065be8",
+  "hash": "49f88366",
+  "configHash": "5fc2ed6d",
   "lockfileHash": "87802824",
-  "browserHash": "af163a0f",
+  "browserHash": "30e870c1",
   "optimized": {
     "docx-preview": {
       "src": "../../../../../node_modules/docx-preview/dist/docx-preview.mjs",
       "file": "docx-preview.js",
-      "fileHash": "c39c6fcf",
+      "fileHash": "04395eeb",
       "needsInterop": false
     },
     "jszip": {
       "src": "../../../../../node_modules/jszip/dist/jszip.min.js",
       "file": "jszip.js",
-      "fileHash": "7de2c746",
-      "needsInterop": true
-    },
-    "pdfjs-dist": {
-      "src": "../../../../../node_modules/pdfjs-dist/build/pdf.js",
-      "file": "pdfjs-dist.js",
-      "fileHash": "14644fea",
+      "fileHash": "7f8c88fe",
       "needsInterop": true
     }
   },
   "chunks": {
-    "chunk-UTP6WBQF": {
-      "file": "chunk-UTP6WBQF.js"
-    },
-    "chunk-MY6ZM4EU": {
-      "file": "chunk-MY6ZM4EU.js"
+    "chunk-LG2LBQCU": {
+      "file": "chunk-LG2LBQCU.js"
     }
   }
 }

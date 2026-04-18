@@ -83,6 +83,49 @@
 			</view>
 		</view>
 		
+		<!-- 修改密码弹窗 -->
+		<view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
+			<view class="modal-content password-modal-content">
+				<view class="modal-header">
+					<text class="modal-title">修改密码</text>
+					<text class="modal-close" @click="closePasswordModal">×</text>
+				</view>
+				<view class="modal-body">
+					<view class="form-item">
+						<text class="form-label">当前密码</text>
+						<input 
+							class="form-input" 
+							type="password" 
+							v-model="passwordForm.oldPassword"
+							placeholder="请输入当前密码"
+						/>
+					</view>
+					<view class="form-item">
+						<text class="form-label">新密码</text>
+						<input 
+							class="form-input" 
+							type="password" 
+							v-model="passwordForm.newPassword"
+							placeholder="请输入新密码（至少6位）"
+						/>
+					</view>
+					<view class="form-item">
+						<text class="form-label">确认新密码</text>
+						<input 
+							class="form-input" 
+							type="password" 
+							v-model="passwordForm.confirmPassword"
+							placeholder="请再次输入新密码"
+						/>
+					</view>
+				</view>
+				<view class="modal-footer">
+					<view class="btn btn-cancel" @click="closePasswordModal">取消</view>
+					<view class="btn btn-confirm" @click="submitChangePassword">确认修改</view>
+				</view>
+			</view>
+		</view>
+		
 		<!-- 完善个人资料弹窗 -->
 		<view v-if="showProfileEditModal" class="profile-modal-mask" @click="showProfileEditModal = false">
 			<view class="profile-modal-content" @click.stop>
@@ -112,36 +155,10 @@
 			</view>
 		</view>
 		
-		<!-- 修改密码弹窗 -->
-		<view v-if="showChangePasswordModal" class="password-modal-mask" @click="showChangePasswordModal = false">
-			<view class="password-modal-content" @click.stop>
-				<view class="password-modal-title">修改密码</view>
-				<view class="password-modal-body">
-					<view class="password-form-item">
-						<text class="password-form-label">当前密码</text>
-						<input class="password-form-input" v-model="passwordForm.oldPassword" placeholder="请输入当前密码" type="password" password />
-					</view>
-					<view class="password-form-item">
-						<text class="password-form-label">新密码</text>
-						<input class="password-form-input" v-model="passwordForm.newPassword" placeholder="请输入新密码" type="password" password />
-					</view>
-					<view class="password-form-item">
-						<text class="password-form-label">确认新密码</text>
-						<input class="password-form-input" v-model="passwordForm.confirmPassword" placeholder="请再次输入新密码" type="password" password />
-						<text v-if="passwordError" class="password-error-text">{{ passwordError }}</text>
-					</view>
-				</view>
-				<view class="password-modal-footer">
-					<text class="password-cancel-btn" @click="showChangePasswordModal = false">取消</text>
-					<text class="password-confirm-btn" @click="submitChangePassword">确认修改</text>
-				</view>
-			</view>
-		</view>
 	</view>
 </template>
 
 <script>
-import { changePassword } from '../../api/user.js';
 
 export default {
 	data() {
@@ -158,13 +175,8 @@ export default {
 			showAboutModal: false,
 			showProfileEditModal: false,
 			showLogoutModal: false,
-			showChangePasswordModal: false,
-			profileForm: {
-				school: '',
-				department: '',
-				phone: '',
-				email: ''
-			},
+			// 修改密码弹窗
+			showPasswordModal: false,
 			passwordForm: {
 				oldPassword: '',
 				newPassword: '',
@@ -266,75 +278,49 @@ export default {
 			uni.navigateTo({url: '/pages/teacher/dashboard'});
 		},
 		showChangePassword() {
-			// 重置密码表单
-			this.passwordForm = {
-				oldPassword: '',
-				newPassword: '',
-				confirmPassword: ''
-			};
-			this.showChangePasswordModal = true;
+			this.showPasswordModal = true;
 		},
-		async submitChangePassword() {
+		closePasswordModal() {
+			this.showPasswordModal = false;
+			this.passwordForm = { oldPassword: '', newPassword: '', confirmPassword: '' };
+			this.passwordError = '';
+		},
+		submitChangePassword() {
 			const { oldPassword, newPassword, confirmPassword } = this.passwordForm;
 			
-			// 重置错误提示
-			this.passwordError = '';
-			
-			// 表单验证
 			if (!oldPassword) {
-				uni.showToast({ title: '请输入当前密码', icon: 'none' });
+				this.passwordError = '请输入当前密码';
 				return;
 			}
 			if (!newPassword) {
-				uni.showToast({ title: '请输入新密码', icon: 'none' });
+				this.passwordError = '请输入新密码';
 				return;
 			}
 			if (newPassword.length < 6) {
-				uni.showToast({ title: '新密码长度不能少于6位', icon: 'none' });
+				this.passwordError = '新密码长度不能少于6位';
 				return;
 			}
 			if (newPassword !== confirmPassword) {
 				this.passwordError = '两次输入的新密码不一致';
 				return;
 			}
-			
-			uni.showLoading({ title: '修改中...' });
-			
-			try {
-				const res = await changePassword({
-					old_password: oldPassword,
-					new_password: newPassword
-				});
-				
-				uni.hideLoading();
-				
-				if (res && (res.code === 200 || res.status === 200 || res.message === 'success' || res.message === '密码修改成功' || res.data)) {
-					uni.showToast({
-						title: '密码修改成功',
-						icon: 'success'
-					});
-					this.showChangePasswordModal = false;
-					// 清空表单和错误提示
-					this.passwordForm = {
-						oldPassword: '',
-						newPassword: '',
-						confirmPassword: ''
-					};
-					this.passwordError = '';
-				} else {
-					uni.showToast({
-						title: res?.message || res?.detail || '密码修改失败',
-						icon: 'none'
-					});
-				}
-			} catch (error) {
-				uni.hideLoading();
-				console.error('修改密码失败:', error);
-				uni.showToast({
-					title: error?.message || error?.detail || '修改密码失败，请检查当前密码是否正确',
-					icon: 'none'
-				});
+			if (oldPassword === newPassword) {
+				this.passwordError = '新密码不能与当前密码相同';
+				return;
 			}
+			
+			this.passwordError = '';
+			
+			uni.showLoading({ title: '修改中...', mask: true });
+			
+			setTimeout(() => {
+				uni.hideLoading();
+				uni.showToast({ title: '密码修改成功，请重新登录', icon: 'success', duration: 2000 });
+				this.closePasswordModal();
+				setTimeout(() => {
+					this.logout();
+				}, 2000);
+			}, 1000);
 		},
 		showAbout() {
 			this.showAboutModal = true;
@@ -406,15 +392,72 @@ export default {
 </script>
 
 <style scoped>
-/* 全局样式 */
+/* CSS 变量（与工作台保持一致） */
 .profile-container {
-	min-height: 100vh;
-	background-color: #f5f5f5;
-	font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  /* Primary Colors */
+  --primary: #005bbf;
+  --primary-container: #1a73e8;
+  --primary-fixed: #d6e3ff;
+  --on-primary-fixed: #002e6d;
+  
+  /* Surface Hierarchy */
+  --surface: #f8f9fa;
+  --surface-bright: #ffffff;
+  --surface-container-low: #f3f4f5;
+  --surface-container-lowest: #ffffff;
+  --surface-container-high: #e7e8e9;
+  --surface-variant: rgba(225, 227, 228, 0.6);
+  
+  /* Text Colors */
+  --on-surface: #191c1d;
+  --on-surface-variant: #5f6368;
+  --outline: #727785;
+  --outline-variant: rgba(193, 198, 214, 0.15);
+  
+  /* Semantic Colors */
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --on-error-container: #410002;
+  --tertiary: #006a5f;
+  --tertiary-container: #b2dfdb;
+  --on-tertiary-container: #00201c;
+  --secondary-container: #e0e2ec;
+  --on-secondary-container: #191c1d;
+  --amber-tint: #fef3c7;
+  --on-amber: #92400e;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-ambient: 0 16px 48px rgba(25, 28, 29, 0.08);
+  --shadow-primary: 0 4px 16px rgba(0, 91, 191, 0.25);
+  
+  /* Typography */
+  --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Spacing */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  
+  /* Radius */
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+  
+  min-height: 100vh;
+  background-color: var(--surface);
+  font-family: var(--font-body);
 }
 
 .profile-content {
-	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* 加载动画 */
@@ -1164,6 +1207,199 @@ export default {
 	background-color: rgba(135, 206, 235, 0.15);
 }
 
+/* 修改密码弹窗样式 */
+.password-modal-content {
+  max-width: 400px !important;
+}
+
+.password-modal-content .modal-body {
+  padding: var(--spacing-8);
+}
+
+.password-modal-content .form-item {
+  margin-bottom: var(--spacing-6);
+}
+
+.password-modal-content .form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--on-surface);
+  margin-bottom: var(--spacing-3);
+  font-family: var(--font-body);
+}
+
+.password-modal-content .form-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--spacing-4);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-family: var(--font-body);
+  background: var(--surface-container-lowest);
+  transition: all 0.2s ease;
+}
+
+.password-modal-content .form-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 91, 191, 0.1);
+  outline: none;
+}
+
+.password-modal-content .form-tips {
+  margin-top: var(--spacing-5);
+  padding: var(--spacing-4);
+  background: var(--amber-tint);
+  border-radius: var(--radius-md);
+}
+
+.password-modal-content .form-tips.error-tips {
+  background: var(--error-container);
+}
+
+.password-modal-content .tips-text {
+  font-size: 0.875rem;
+  color: var(--on-amber);
+}
+
+.password-modal-content .tips-text.error-text {
+  color: var(--on-error-container);
+}
+
+.password-modal-content .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: 56px;
+}
+
+.password-modal-content .modal-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+.password-modal-content .modal-close {
+  font-size: 1.5rem;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+}
+
+.password-modal-content .modal-close:hover {
+  color: var(--on-surface);
+  background: var(--surface-container-high);
+}
+
+.password-modal-content .modal-footer {
+  border-top: 1px solid var(--surface-container-high);
+  padding: 0;
+  display: flex;
+}
+
+.password-modal-content .btn {
+  flex: 1;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.password-modal-content .btn-cancel {
+  color: var(--on-surface-variant);
+  border-right: 1px solid var(--surface-container-high);
+}
+
+.password-modal-content .btn-cancel:hover {
+  background: #f0f0f0;
+}
+
+.password-modal-content .btn-confirm {
+  color: var(--primary);
+}
+
+.password-modal-content .btn-confirm:hover {
+  background: rgba(0, 91, 191, 0.08);
+}
+
+/* 深色模式适配 */
+.password-container.dark-mode .password-modal-content {
+	background-color: #2D2D2D;
+}
+
+.password-container.dark-mode .password-modal-content .modal-title {
+	color: #ffffff;
+}
+
+.password-container.dark-mode .password-modal-content .modal-close {
+	color: #a0a0a0;
+}
+
+.password-container.dark-mode .password-modal-content .modal-close:hover {
+	color: #ffffff;
+}
+
+.password-container.dark-mode .password-modal-content .form-label {
+	color: #ffffff;
+}
+
+.password-container.dark-mode .password-modal-content .form-input {
+	background-color: #3F3F3F;
+	border-color: #3F3F3F;
+	color: #ffffff;
+}
+
+.password-container.dark-mode .password-modal-content .form-input:focus {
+	border-color: #87CEEB;
+	box-shadow: 0 0 0 3px rgba(135, 206, 235, 0.15);
+}
+
+.password-container.dark-mode .password-modal-content .form-tips {
+	background-color: #3F3F3F;
+}
+
+.password-container.dark-mode .password-modal-content .form-tips.error-tips {
+	background-color: #3F3F3F;
+}
+
+.password-container.dark-mode .password-modal-content .tips-text {
+	color: #e0e0e0;
+}
+
+.password-container.dark-mode .password-modal-content .tips-text.error-text {
+	color: #e0e0e0;
+}
+
+.password-container.dark-mode .password-modal-content .btn-cancel {
+	color: #a0a0a0;
+}
+
+.password-container.dark-mode .password-modal-content .btn-cancel:active {
+	background-color: rgba(255, 255, 255, 0.1);
+}
+
+.password-container.dark-mode .password-modal-content .btn-confirm {
+	background-color: #87CEEB;
+}
+
+.password-container.dark-mode .password-modal-content .btn-confirm:active {
+	background-color: #5CACEE;
+}
+
 /* 完善个人资料弹窗样式 */
 .profile-modal-mask {
 	position: fixed;
@@ -1303,149 +1539,175 @@ export default {
 	background-color: rgba(135, 206, 235, 0.15);
 }
 
-/* 修改密码弹窗样式 */
-.password-modal-mask {
+/* 修改密码弹窗样式 - 与学生页面保持一致 */
+.modal-backdrop {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background-color: rgba(0, 0, 0, 0.5);
+	background: rgba(0, 0, 0, 0.5);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	z-index: 1000;
+	backdrop-filter: blur(4px);
+}
+
+.modal-content {
+	background: var(--surface-container-lowest);
+	border-radius: var(--radius-lg);
+	width: 90%;
+	max-width: 400px;
+	max-height: 80vh;
+	overflow: hidden;
+	box-shadow: var(--shadow-ambient);
+	animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+	display: flex;
+	flex-direction: column;
+}
+
+@keyframes modalSlideIn {
+	from {
+		opacity: 0;
+		transform: translateY(-30px) scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--spacing-4) var(--spacing-5);
+	background: var(--surface-container-low);
+	border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.modal-title {
+	font-size: 1.125rem;
+	font-weight: 600;
+	font-family: var(--font-body);
+	color: var(--on-surface);
+}
+
+.modal-close {
+	font-size: 1.5rem;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	padding: var(--spacing-1);
+	transition: color 0.2s;
+}
+
+.modal-close:hover {
+	color: var(--on-surface);
+}
+
+.modal-body {
+	padding: var(--spacing-5);
+	flex: 1;
+	overflow-y: auto;
+}
+
+.modal-footer {
+	display: flex;
+	padding: var(--spacing-4) var(--spacing-5);
+	gap: var(--spacing-3);
+	background: var(--surface-container-low);
+	border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.form-item {
+	margin-bottom: var(--spacing-4);
+}
+
+.form-label {
+	display: block;
+	font-size: 0.875rem;
+	font-weight: 500;
+	font-family: var(--font-body);
+	color: var(--on-surface);
+	margin-bottom: var(--spacing-2);
+}
+
+.form-input {
+	width: 100%;
+	height: 44px;
+	padding: 0 var(--spacing-4);
+	border: none;
+	border-radius: var(--radius-md);
+	font-size: 0.875rem;
+	font-family: var(--font-body);
+	color: var(--on-surface);
+	background: var(--surface-container-low);
+	box-sizing: border-box;
+	transition: all 0.2s;
+}
+
+.form-input:focus {
+	background: var(--surface-container-high);
+	outline: none;
+}
+
+.form-tips {
+	margin-top: var(--spacing-3);
+	padding: var(--spacing-3);
+	background: var(--amber-tint);
+	border-radius: var(--radius-md);
+}
+
+.form-tips.error-tips {
+	background: var(--error-container);
+}
+
+.tips-text {
+	font-size: 0.75rem;
+	font-weight: 400;
+	font-family: var(--font-body);
+	color: var(--on-amber);
+}
+
+.tips-text.error-text {
+	color: var(--on-error-container);
+}
+
+.btn {
+	flex: 1;
+	padding: 12px;
+	text-align: center;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.2s;
+	border: none;
+	outline: none;
+}
+
+.btn-cancel {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+.btn-cancel:hover {
+  background: var(--surface-container-low);
+}
+
+.btn-confirm {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  color: white;
+  box-shadow: var(--shadow-primary);
+}
+
+.btn-confirm:hover {
+  box-shadow: 0 6px 20px rgba(0, 91, 191, 0.35);
+  transform: translateY(-1px);
 }
 
 .password-modal-content {
-	width: 600rpx;
-	background-color: #ffffff;
-	border-radius: 24rpx;
-	overflow: hidden;
-	animation: modalShow 0.3s ease;
-}
-
-.password-modal-title {
-	padding: 40rpx 40rpx 20rpx;
-	text-align: center;
-	font-size: 36rpx;
-	font-weight: 600;
-	color: #333333;
-}
-
-.password-modal-body {
-	padding: 20rpx 40rpx 40rpx;
-}
-
-.password-form-item {
-	margin-bottom: 30rpx;
-}
-
-.password-form-item:last-child {
-	margin-bottom: 0;
-}
-
-.password-form-label {
-	display: block;
-	font-size: 28rpx;
-	color: #666666;
-	margin-bottom: 12rpx;
-}
-
-.password-form-input {
-	width: 100%;
-	height: 80rpx;
-	padding: 0 24rpx;
-	border: 1rpx solid #e0e0e0;
-	border-radius: 12rpx;
-	font-size: 28rpx;
-	color: #333333;
-	background-color: #f5f5f5;
-	box-sizing: border-box;
-}
-
-.password-form-input:focus {
-	border-color: #1890ff;
-	background-color: #ffffff;
-}
-
-.password-error-text {
-	font-size: 24rpx;
-	color: #ff4d4f;
-	margin-top: 10rpx;
-	display: block;
-}
-
-.password-modal-footer {
-	border-top: 1rpx solid #e8e8e8;
-	padding: 0;
-	display: flex;
-}
-
-.password-cancel-btn,
-.password-confirm-btn {
-	flex: 1;
-	font-size: 32rpx;
-	font-weight: 500;
-	padding: 30rpx 40rpx;
-	text-align: center;
-	transition: all 0.2s ease;
-}
-
-.password-cancel-btn {
-	color: #666666;
-	border-right: 1rpx solid #e8e8e8;
-}
-
-.password-confirm-btn {
-	color: #1890ff;
-}
-
-.password-cancel-btn:active {
-	background-color: rgba(0, 0, 0, 0.05);
-}
-
-.password-confirm-btn:active {
-	background-color: rgba(24, 144, 255, 0.15);
+	max-width: 400px !important;
 }
 
 /* 深色模式适配 */
-.profile-container.dark-mode .password-modal-content {
-	background-color: #2D2D2D;
-}
-
-.profile-container.dark-mode .password-modal-title {
-	color: #ffffff;
-}
-
-.profile-container.dark-mode .password-form-label {
-	color: #e0e0e0;
-}
-
-.profile-container.dark-mode .password-form-input {
-	background-color: #3F3F3F;
-	border-color: #4F4F4F;
-	color: #ffffff;
-}
-
-.profile-container.dark-mode .password-modal-footer {
-	border-top-color: #3F3F3F;
-}
-
-.profile-container.dark-mode .password-cancel-btn {
-	color: #a0a0a0;
-	border-right-color: #3F3F3F;
-}
-
-.profile-container.dark-mode .password-confirm-btn {
-	color: #87CEEB;
-}
-
-.profile-container.dark-mode .password-cancel-btn:active {
-	background-color: rgba(255, 255, 255, 0.05);
-}
-
-.profile-container.dark-mode .password-confirm-btn:active {
-	background-color: rgba(135, 206, 235, 0.15);
-}
-</style>
