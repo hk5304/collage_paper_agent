@@ -163,13 +163,13 @@ export default {
     // ─── 导航 ───────────────────────────────────────────
 
     goBack() {
-      // 尝试返回上一页，如果无法返回则跳转到论文列表页
+      // 尝试返回上一页，如果无法返回则跳转到工作台
       const pages = getCurrentPages();
       if (pages.length > 1) {
         uni.navigateBack();
       } else {
         uni.redirectTo({
-          url: '/pages/student/paperList'
+          url: '/pages/student/workbench'
         });
       }
     },
@@ -184,7 +184,7 @@ export default {
         this.pageTitle = '论文批注';
       }
 
-      // 尝试读取 paperList 页面传递过来的批注数据
+      // 尝试读取工作台页面传递过来的批注数据
       const app = getApp();
       if (app.globalData?.previewAnnotations) {
         this.annotations = app.globalData.previewAnnotations.map(item => this.parseAnnotation(item));

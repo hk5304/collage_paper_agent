@@ -24,15 +24,6 @@
 			}
 		},
 		{
-			"path": "pages/student/paperList",
-			"style": {
-				"navigationStyle": "custom",
-				"navigationBarTitleText": "我的论文列表",
-				"navigationBarBackgroundColor": "#1890ff",
-				"navigationBarTextStyle": "white"
-			}
-		},
-		{
 			"path": "pages/student/paperPreview",
 			"style": {
 				"navigationStyle": "custom",

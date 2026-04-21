@@ -432,13 +432,13 @@
 							</view>
 							<view class="access-import-head-text">
 								<text class="access-import-title">批量导入用户</text>
-								<text class="access-import-lead">通过 CSV 一次写入多条账号，与左侧单条创建互补。</text>
+								<text class="access-import-lead">通过 CSV、Excel 一次写入多条账号，与左侧单条创建互补。</text>
 							</view>
 						</view>
 						<view class="access-import-tips">
-							<text class="access-import-tip-line">支持 .csv，单文件不超过 10MB</text>
-							<text class="access-import-tip-line">需含列：username, user_type, full_name, role, password</text>
-							<text class="access-import-tip-line">user_type / role 取值：student 或 teacher</text>
+							<text class="access-import-tip-line">支持 .csv.xlsx，单文件不超过 10MB</text>
+							<text class="access-import-tip-line">需含列：用户名, 角色类型, 全名, 密码</text>
+							<text class="access-import-tip-line">角色类型取值：student 或 teacher，用户名即学号/工号</text>
 						</view>
 						<view v-if="selectedUserImportFile" class="access-import-file">
 							<text class="material-symbols-outlined access-import-file-ic">description</text>
@@ -451,7 +451,7 @@
 						<view class="access-import-actions">
 							<button class="access-import-btn-secondary" type="default" @click="chooseUserImportFile">
 								<text class="material-symbols-outlined access-import-btn-ic">attach_file</text>
-								<text>选择 CSV</text>
+								<text>选择 CSV、Excel</text>
 							</button>
 							<button
 								class="access-import-btn-primary"
@@ -700,22 +700,6 @@
 								<view class="dash-deadline-copy">
 									<text class="dash-deadline-title">查看与管理截止日期</text>
 									<text class="dash-deadline-desc">按教师工号查询，维护各教师设置的截止日期</text>
-								</view>
-								<text class="material-symbols-outlined dash-deadline-chevron">chevron_right</text>
-							</view>
-						</view>
-
-						<view class="dash-panel dash-panel--agent-permission">
-							<view class="dash-panel-head">
-								<text class="dash-panel-title">智能体权限管理</text>
-							</view>
-							<view class="dash-deadline-row" @click="openAgentPermissionModal">
-								<view class="dash-deadline-cal dash-deadline-cal--agent">
-									<text class="material-symbols-outlined">smart_toy</text>
-								</view>
-								<view class="dash-deadline-copy">
-									<text class="dash-deadline-title">查看与处理权限申请</text>
-									<text class="dash-deadline-desc">审批学生的智能体使用权限申请，可同意或拒绝</text>
 								</view>
 								<text class="material-symbols-outlined dash-deadline-chevron">chevron_right</text>
 							</view>
@@ -1374,70 +1358,6 @@
 			</view>
 		</view>
 		
-		<!-- 智能体权限申请弹窗 -->
-		<view v-if="showAgentPermissionModal" class="agent-permission-modal-mask" @click="closeAgentPermissionModal">
-			<view class="agent-permission-modal-content" @click.stop>
-				<view class="admin-custom-modal-header">
-					<text class="material-symbols-outlined">smart_toy</text>
-					<text>智能体权限申请</text>
-					<view v-if="!agentPermissionLoading && agentPermissionList.length > 0" class="agent-count-badge">
-						<text>{{ agentPermissionList.length }}</text>
-					</view>
-					<view class="agent-modal-close" @click="closeAgentPermissionModal">
-						<text class="material-symbols-outlined">close</text>
-					</view>
-				</view>
-				<view class="agent-permission-modal-body">
-					<!-- 加载中 -->
-					<view v-if="agentPermissionLoading" class="agent-permission-loading">
-						<text class="material-symbols-outlined agent-loading-icon">hourglass_top</text>
-						<text class="agent-loading-text">正在加载...</text>
-					</view>
-					<!-- 暂无申请 -->
-					<view v-else-if="agentPermissionList.length === 0" class="agent-permission-empty">
-						<text class="material-symbols-outlined agent-empty-icon">inbox</text>
-						<text class="agent-empty-text">暂无待处理的申请</text>
-					</view>
-					<!-- 申请列表 -->
-					<view v-else class="agent-permission-list">
-						<!-- 数量过多时显示提示条 -->
-						<view v-if="agentPermissionList.length >= 20" class="agent-list-hint">
-							<text class="material-symbols-outlined">info</text>
-							<text>共 {{ agentPermissionList.length }} 条申请，向下滚动查看更多</text>
-						</view>
-						<view
-							v-for="item in agentPermissionList"
-							:key="item.messageId"
-							class="agent-permission-item"
-						>
-							<view class="agent-permission-item-main">
-								<text class="agent-permission-item-content">{{ item.content }}</text>
-								<text class="agent-permission-item-time">{{ item.receivedTime }}</text>
-							</view>
-							<view class="agent-permission-item-actions">
-								<view
-									class="agent-action-btn agent-action-btn--approve"
-									:class="{ 'agent-action-btn--disabled': agentPermissionHandling === item.messageId }"
-									@click="handleAgentPermission(item, 'approve')"
-								>
-									<text class="material-symbols-outlined">check</text>
-									<text>同意</text>
-								</view>
-								<view
-									class="agent-action-btn agent-action-btn--reject"
-									:class="{ 'agent-action-btn--disabled': agentPermissionHandling === item.messageId }"
-									@click="handleAgentPermission(item, 'reject')"
-								>
-									<text class="material-symbols-outlined">close</text>
-									<text>拒绝</text>
-								</view>
-							</view>
-						</view>
-					</view>
-				</view>
-			</view>
-		</view>
-
 		<!-- 截止日期管理弹窗 -->
 		<view v-if="showDeadlineModal" class="deadline-modal" @click="closeDeadlineModal">
 			<view class="deadline-modal-content admin-dialog-sheet admin-dialog-sheet--wide" @click.stop>
@@ -1541,14 +1461,6 @@
 							class="form-input admin-dialog-input"
 							v-model="groupForm.name"
 							placeholder="请输入群组名称"
-						/>
-					</view>
-					<view class="form-item admin-dialog-form-item">
-						<text class="form-label">群组编号</text>
-						<input
-							class="form-input admin-dialog-input"
-							v-model="groupForm.code"
-							placeholder="请输入群组编号"
 						/>
 					</view>
 				</view>
@@ -2102,11 +2014,6 @@
 				// 删除确认弹窗
 				showDeleteDeadlineModal: false,
 				deletingItem: null,
-				// 智能体权限管理
-				showAgentPermissionModal: false,
-				agentPermissionList: [],
-				agentPermissionLoading: false,
-				agentPermissionHandling: null,
 				// 成员详情弹窗
 				showMemberModal: false,
 				currentGroup: null,
@@ -3181,61 +3088,6 @@
 				this.showDeadlineModal = true;
 			},
 
-			// 打开智能体权限申请弹窗
-			async openAgentPermissionModal() {
-				this.showAgentPermissionModal = true;
-				this.agentPermissionLoading = true;
-				try {
-					const adminInfo = await this.getOrCreateAdmin();
-					const adminId = adminInfo.username || 'admin';
-					const { getAgentPermissionRequests } = await import('@/api/admin.js');
-					const res = await getAgentPermissionRequests(adminId);
-					const messages = (res && res.messages) ? res.messages : [];
-					this.agentPermissionList = messages.map(m => ({
-						messageId: m.metadata && m.metadata.message_id ? m.metadata.message_id : String(m.id),
-						content: m.content || '',
-						receivedTime: m.received_time ? m.received_time.replace('T', ' ').slice(0, 16) : ''
-					}));
-				} catch (e) {
-					console.error('加载智能体权限申请失败:', e);
-					uni.showToast({ title: e?.message || '加载失败', icon: 'none' });
-				} finally {
-					this.agentPermissionLoading = false;
-				}
-			},
-
-			// 关闭智能体权限申请弹窗
-			closeAgentPermissionModal() {
-				this.showAgentPermissionModal = false;
-				this.agentPermissionList = [];
-				this.agentPermissionHandling = null;
-			},
-
-			// 处理智能体权限申请（同意/拒绝）
-			async handleAgentPermission(item, action) {
-				if (this.agentPermissionHandling === item.messageId) return;
-				this.agentPermissionHandling = item.messageId;
-				try {
-					const adminInfo = await this.getOrCreateAdmin();
-					const currentUser = {
-						sub: adminInfo.id || 1,
-						roles: ['admin'],
-						username: adminInfo.username || 'admin'
-					};
-					const { handleAgentPermissionRequest } = await import('@/api/admin.js');
-					await handleAgentPermissionRequest(item.messageId, action, currentUser);
-					uni.showToast({ title: action === 'approve' ? '已同意申请' : '已拒绝申请', icon: 'success' });
-					// 处理成功后从列表移除该项
-					const idx = this.agentPermissionList.findIndex(i => i.messageId === item.messageId);
-					if (idx > -1) this.agentPermissionList.splice(idx, 1);
-				} catch (e) {
-					console.error('处理权限申请失败:', e);
-					uni.showToast({ title: e?.message || '操作失败', icon: 'none' });
-				} finally {
-					this.agentPermissionHandling = null;
-				}
-			},
-			
 			// 关闭截止日期管理弹窗
 			closeDeadlineModal() {
 				this.showDeadlineModal = false;
@@ -12681,229 +12533,6 @@
 
 	.dashboard-update-time {
 		margin-top: 8rpx;
-	}
-
-	/* 智能体权限管理卡片 */
-	.dash-panel--agent-permission {
-	}
-
-	.dash-deadline-cal--agent {
-		background: rgba(0, 91, 191, 0.08);
-		color: #005bbf;
-	}
-
-	/* 智能体权限申请弹窗 */
-	.agent-permission-modal-mask {
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: rgba(0, 0, 0, 0.45);
-		backdrop-filter: blur(8rpx);
-		-webkit-backdrop-filter: blur(8rpx);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 2000;
-		animation: fadeIn 0.2s ease;
-		--primary: #005bbf;
-		--on-surface: #191c1d;
-		--on-surface-variant: #414754;
-		--surface-container-high: #e7e8e9;
-		--error: #ba1a1a;
-		--outline-variant: #c1c6d6;
-		--surface-container-lowest: #ffffff;
-	}
-
-	.agent-permission-modal-content {
-		background: #fff;
-		border-radius: 20px;
-		width: 90%;
-		max-width: 600px;
-		max-height: 82vh;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.15));
-		animation: slideUp 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-	}
-
-	.agent-permission-modal-content .admin-custom-modal-header {
-		position: relative;
-	}
-
-	.agent-modal-close {
-		position: absolute;
-		right: 20px;
-		top: 50%;
-		transform: translateY(-50%);
-		cursor: pointer;
-		color: var(--on-surface-variant);
-		display: flex;
-		align-items: center;
-	}
-
-	.agent-modal-close .material-symbols-outlined {
-		font-size: 20px;
-	}
-
-	.agent-permission-modal-body {
-		padding: 0;
-		overflow-y: auto;
-		flex: 1;
-	}
-
-	/* 加载中状态 */
-	.agent-permission-loading {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 24px;
-		gap: 12px;
-	}
-
-	.agent-loading-icon {
-		font-size: 32px;
-		color: var(--primary);
-		animation: spin 1.2s linear infinite;
-	}
-
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-
-	.agent-loading-text {
-		font-size: 14px;
-		color: var(--on-surface-variant);
-	}
-
-	/* 空状态 */
-	.agent-permission-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 24px;
-		gap: 12px;
-	}
-
-	.agent-empty-icon {
-		font-size: 40px;
-		color: #c4c7cc;
-	}
-
-	.agent-empty-text {
-		font-size: 14px;
-		color: var(--on-surface-variant);
-	}
-
-	/* 申请列表 */
-	.agent-permission-list {
-		padding: 8px 0;
-	}
-
-	.agent-permission-item {
-		display: flex;
-		align-items: center;
-		gap: 16px;
-		padding: 16px 24px;
-		border-bottom: 1px solid var(--surface-container-high);
-	}
-
-	.agent-permission-item:last-child {
-		border-bottom: none;
-	}
-
-	.agent-permission-item-main {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.agent-permission-item-content {
-		font-size: 14px;
-		color: var(--on-surface);
-		line-height: 1.5;
-	}
-
-	.agent-permission-item-time {
-		font-size: 12px;
-		color: var(--on-surface-variant);
-	}
-
-	.agent-permission-item-actions {
-		display: flex;
-		gap: 8px;
-		flex-shrink: 0;
-	}
-
-	.agent-action-btn {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 6px 14px;
-		border-radius: 8px;
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: opacity 0.2s;
-	}
-
-	.agent-action-btn--approve {
-		background: rgba(0, 91, 191, 0.1);
-		color: #005bbf;
-	}
-
-	.agent-action-btn--reject {
-		background: rgba(186, 26, 26, 0.1);
-		color: #ba1a1a;
-	}
-
-	.agent-action-btn--disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.agent-action-btn .material-symbols-outlined {
-		font-size: 16px;
-	}
-
-	/* 数量 Badge */
-	.agent-count-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 22px;
-		height: 22px;
-		padding: 0 6px;
-		border-radius: 11px;
-		background: #005bbf;
-		color: #fff;
-		font-size: 12px;
-		font-weight: 700;
-		margin-left: 4px;
-	}
-
-	/* 列表数量过多提示条 */
-	.agent-list-hint {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 10px 24px;
-		background: rgba(0, 91, 191, 0.06);
-		border-bottom: 1px solid rgba(0, 91, 191, 0.1);
-		font-size: 13px;
-		color: #005bbf;
-	}
-
-	.agent-list-hint .material-symbols-outlined {
-		font-size: 16px;
-		flex-shrink: 0;
 	}
 
 	/* 截止日期管理弹窗（与群组 / admin-dialog 一致） */

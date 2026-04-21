@@ -123,7 +123,7 @@
       <!-- 内容画布 -->
       <view class="content-canvas">
         <!-- 班级选择视图 -->
-        <view class="class-selection-view" v-if="!selectedClass">
+        <view class="class-selection-view" v-if="!selectedClass && !isAllClassMode">
           <view class="page-header">
             <view>
               <h2 class="page-title">选择班级</h2>
@@ -140,11 +140,19 @@
               <view class="class-stats">
                 <view class="stat-box">
                   <text class="stat-value">{{ item.studentCount || 0 }}</text>
-                  <text class="stat-label">学生</text>
+                  <text class="stat-label">学生数</text>
                 </view>
-                <view class="stat-box">
-                  <text class="stat-value">{{ item.paperCount || 0 }}</text>
-                  <text class="stat-label">论文</text>
+                <view class="stat-box stat-box--pending">
+                  <text class="stat-value">{{ item.pendingReviewCount || 0 }}</text>
+                  <text class="stat-label">待审阅</text>
+                </view>
+                <view class="stat-box stat-box--update">
+                  <text class="stat-value">{{ item.pendingUpdateCount || 0 }}</text>
+                  <text class="stat-label">待修改</text>
+                </view>
+                <view class="stat-box stat-box--finalized">
+                  <text class="stat-value">{{ item.finalizedCount || 0 }}</text>
+                  <text class="stat-label">已定稿</text>
                 </view>
               </view>
             </view>
@@ -157,7 +165,7 @@
         </view>
         
         <!-- 论文列表视图 -->
-        <view class="thesis-view" v-else-if="!showMessageCenter">
+        <view class="thesis-view" v-else-if="(selectedClass || isAllClassMode) && !showMessageCenter">
           <!-- 页面标题区 -->
           <view class="page-header">
             <view>
@@ -168,13 +176,48 @@
           
           <!-- Bento 筛选栏 -->
           <view class="bento-filter-bar">
-            <view class="filter-card" @click="showFilterDropdown = !showFilterDropdown">
+            <view class="filter-card" @click="showFilterDropdown = !showFilterDropdown; showClassDropdown = false">
               <view class="filter-icon primary">
                 <text class="material-symbols-outlined">filter_list</text>
               </view>
               <view class="filter-info">
                 <text class="filter-label">按状态筛选</text>
                 <text class="filter-value">{{ getFilterLabel }}</text>
+              </view>
+            </view>
+            
+            <!-- 按班级筛选 -->
+            <view class="filter-card filter-card--class" @click="showClassDropdown = !showClassDropdown; showFilterDropdown = false" style="position:relative">
+              <view class="filter-icon" style="background: rgba(16,185,129,0.1)">
+                <text class="material-symbols-outlined" style="color:#10b981">group</text>
+              </view>
+              <view class="filter-info">
+                <text class="filter-label">按班级筛选</text>
+                <text class="filter-value">{{ isAllClassMode ? '全部班级' : (selectedClass ? selectedClass.name : '全部') }}</text>
+              </view>
+              <text class="material-symbols-outlined filter-chevron">expand_more</text>
+              <!-- 班级下拉列表 -->
+              <view v-if="showClassDropdown" class="class-dropdown" @click.stop>
+                <view
+                  class="class-dropdown-item"
+                  :class="{ active: isAllClassMode }"
+                  @click="switchClass(null)"
+                >
+                  <text class="material-symbols-outlined">all_inclusive</text>
+                  <text>全部班级</text>
+                  <text class="material-symbols-outlined check-icon" v-if="isAllClassMode">check</text>
+                </view>
+                <view
+                  v-for="cls in classList"
+                  :key="cls.id"
+                  class="class-dropdown-item"
+                  :class="{ active: !isAllClassMode && selectedClass && selectedClass.id === cls.id }"
+                  @click="switchClass(cls)"
+                >
+                  <text class="material-symbols-outlined">class</text>
+                  <text>{{ cls.name }}</text>
+                  <text class="material-symbols-outlined check-icon" v-if="!isAllClassMode && selectedClass && selectedClass.id === cls.id">check</text>
+                </view>
               </view>
             </view>
             
@@ -187,7 +230,7 @@
           </view>
           
           <!-- 论文列表 -->
-          <view class="thesis-list-container">
+          <view class="thesis-list-container" :class="{ 'dropdown-open': showClassDropdown }" @click="showClassDropdown && (showClassDropdown = false)">
             <!-- 加载中 -->
             <view class="loading-state" v-if="loading">
               <text class="material-symbols-outlined loading-icon">progress_activity</text>
@@ -202,7 +245,8 @@
             
             <!-- 论文卡片列表 -->
             <view class="thesis-list" v-else>
-              <view class="thesis-card" v-for="(student, index) in paginatedStudents" :key="index" @click="student.isUnuploaded || !student.paper ? null : openPaperReview(student, student.paper)" :style="student.isUnuploaded || !student.paper ? 'cursor:default' : ''">
+              <view class="thesis-card" v-for="(student, index) in paginatedStudents" :key="index" @click="showClassDropdown ? (showClassDropdown = false) : (student.isUnuploaded || !student.paper ? null : openPaperReview(student, student.paper))" :style="student.isUnuploaded || !student.paper ? 'cursor:default' : (showClassDropdown ? 'pointer-events:auto;cursor:default' : '')">
+              
                 <!-- 头像与状态区 -->
                 <view class="card-avatar-section">
                   <view class="student-avatar">
@@ -212,6 +256,7 @@
                   <view class="student-info">
                     <text class="student-name">{{ student.name }}</text>
                     <text class="student-id">学号: {{ student.studentNumber || student.id }}</text>
+                    <text class="student-class" v-if="selectedClass || isAllClassMode">班级: {{ isAllClassMode ? (student.className || student.groupName || '') : selectedClass.name }}</text>
                     <view class="status-badge" :class="student.isUnuploaded || !student.paper ? 'status-unuploaded' : getStatusClass(student.paper?.status)">
                       <view class="status-dot"></view>
                       <text>{{ student.isUnuploaded || !student.paper ? '未上传' : getStatusText(student.paper?.status) }}</text>
@@ -543,7 +588,8 @@
                 :disabled="agentSmartButtonDisabled"
                 @click="onAgentSmartPrimaryClick"
               >
-                <text class="material-symbols-outlined">smart_toy</text>
+                <text class="material-symbols-outlined" v-if="!agentAuditSubmitting && !agentReportLoading">smart_toy</text>
+                <view class="btn-loading-spinner" v-else></view>
                 <text>{{ agentSmartButtonText }}</text>
               </button>
               <text class="ai-agent-hint">先提交审核，再点击「查询进度」直至完成；完成后自动拉取 JSON 报告。</text>
@@ -608,6 +654,12 @@
                       <text class="ai-agent-issue-type">{{ formatAgentIssueType(iss.issue_type || iss.issueType) }}</text>
                       <text class="ai-agent-issue-msg">{{ iss.message || iss.msg || '' }}</text>
                       <text v-if="iss.suggestion" class="ai-agent-issue-sug">建议：{{ iss.suggestion }}</text>
+                      <view class="ai-agent-issue-actions">
+                        <view class="ai-agent-action-btn" @tap.stop="addAgentIssueToAnnotation(iss, chunk)" @click.stop="addAgentIssueToAnnotation(iss, chunk)">
+                          <text class="material-symbols-outlined">add_comment</text>
+                          <text>添加到批注</text>
+                        </view>
+                      </view>
                     </view>
                   </view>
                 </view>
@@ -1166,6 +1218,8 @@
 				searchKeyword: '', // 实际生效的搜索词（点击搜索后更新）
 				searchInput: '', // 输入框临时值
 				showFilterDropdown: false,
+				showClassDropdown: false,
+				isAllClassMode: false, // 是否处于“全部班级”模式
 				// 分页相关
 				currentPage: 1,
 				pageSize: 3,
@@ -1746,10 +1800,15 @@
 								studentCount: item.student_count || 0,
 								paperCount: paperCount,
 								pendingCount: item.pending_papers || 0,
-								feedbackCount: item.reviewed_papers || 0
+								feedbackCount: item.reviewed_papers || 0,
+								pendingReviewCount: item.pending_papers || item.pending_review_count || 0,
+								pendingUpdateCount: item.reviewed_papers || item.pending_update_count || 0,
+								finalizedCount: item.finalized_papers || item.finalized_count || 0
 							};
 						});
 						console.log('班级列表数据（分页格式）:', this.classList);
+						// 并发拉取每个班级的学生数据，统计各状态论文数量
+						this.loadAllClassStats();
 					} else if(res && res.code === 200 && res.data) {
 						// 标准格式
 						this.classList = res.data;
@@ -1763,6 +1822,91 @@
 					console.error('加载班级列表失败:', err);
 					this.classLoadError = true;
 					this.loading = false;
+				}
+			},
+			// 并发加载所有班级的论文状态统计（班级列表页直接显示真实数据）
+			async loadAllClassStats() {
+				if (!this.classList || this.classList.length === 0) return;
+				console.log('[loadAllClassStats] 开始，共', this.classList.length, '个班级');
+				try {
+					await Promise.all(this.classList.map(async (classItem) => {
+						try {
+							const res = await getStudentsByClass(classItem.id);
+							console.log('[loadAllClassStats] 班级', classItem.id, 'res类型:', typeof res, 'keys:', res ? Object.keys(res) : 'null');
+							let studentsRaw = null;
+							if (res && Array.isArray(res.students)) {
+								studentsRaw = res.students;
+							} else if (res && res.code === 200 && res.data) {
+								studentsRaw = Array.isArray(res.data.students) ? res.data.students : res.data;
+							} else if (Array.isArray(res)) {
+								studentsRaw = res;
+							}
+							console.log('[loadAllClassStats] 班级', classItem.id, 'studentsRaw数量:', studentsRaw ? studentsRaw.length : 'null');
+							if (studentsRaw && studentsRaw.length > 0) {
+								// 打印第一个学生的论文数据结构
+								const s0 = studentsRaw[0];
+								console.log('[loadAllClassStats] 第一个学生 papers:', s0.papers, 'paper:', s0.paper);
+								if (s0.papers && s0.papers.length > 0) {
+									console.log('[loadAllClassStats] 第一篇论文 status:', s0.papers[0].status, 'paper_status:', s0.papers[0].paper_status);
+								} else if (s0.paper) {
+									console.log('[loadAllClassStats] 单论文 status:', s0.paper.status, 'paper_status:', s0.paper.paper_status);
+								}
+							}
+							if (!studentsRaw) return;
+							
+							const statusMap = {
+								// 英文状态（后端原始字段）
+								'pending': 'pending_review',
+								'updated': 'pending_review',
+								'feedback': 'pending_update',
+								'pending_update': 'pending_update',
+								'finalized': 'finalized',
+								// 中文状态（展示层已转换）
+								'待审阅': 'pending_review', '已更新': 'pending_review',
+								'待更新': 'pending_update', '已审阅': 'pending_update',
+								'已定稿': 'finalized'
+							};
+							let studentCount = 0, pendingReview = 0, pendingUpdate = 0, finalized = 0;
+							studentsRaw.forEach(student => {
+								studentCount++;
+								const papers = Array.isArray(student.papers) && student.papers.length > 0
+									? student.papers
+									: (student.paper ? [student.paper] : []);
+								papers.forEach(paper => {
+									const rawStatus = paper.paper_status || paper.status;
+									const mapped = statusMap[rawStatus];
+									if (mapped === 'pending_review') pendingReview++;
+									else if (mapped === 'pending_update') pendingUpdate++;
+									else if (mapped === 'finalized') finalized++;
+								});
+							});
+							console.log('[loadAllClassStats] 班级', classItem.id, '统计结果:', { studentCount, pendingReview, pendingUpdate, finalized });
+							
+							// 回写到 classList 对应班级
+							const idx = this.classList.findIndex(c => c.id === classItem.id);
+							console.log('[loadAllClassStats] 班级', classItem.id, '在classList中的idx:', idx);
+							if (idx !== -1) {
+								const updated = [
+									...this.classList.slice(0, idx),
+									{
+										...this.classList[idx],
+										studentCount,
+										pendingReviewCount: pendingReview,
+										pendingUpdateCount: pendingUpdate,
+										finalizedCount: finalized
+									},
+									...this.classList.slice(idx + 1)
+								];
+								this.classList = updated;
+								console.log('[loadAllClassStats] 班级', classItem.id, 'classList已更新, 新内容:', this.classList[idx]);
+							}
+						} catch (e) {
+							console.warn('[loadAllClassStats] 加载班级统计失败:', classItem.id, e);
+						}
+					}));
+					console.log('[loadAllClassStats] 全部完成, classList:', this.classList.map(c => ({id: c.id, pr: c.pendingReviewCount, pu: c.pendingUpdateCount, f: c.finalizedCount})));
+				} catch (e) {
+					console.warn('[loadAllClassStats] 异常:', e);
 				}
 			},
 			// 选择班级
@@ -1940,6 +2084,49 @@
 				}
 			},
 			
+			// 全部班级模式：并发加载所有班级的论文文件路径（ossKey）
+			async loadAllGroupPapers() {
+				if (!this.classList || this.classList.length === 0) return;
+				const teacherId = uni.getStorageSync('teacher_id') || uni.getStorageSync('userInfo')?.id;
+				if (!teacherId) {
+					console.warn('[loadAllGroupPapers] 无法获取 teacherId');
+					return;
+				}
+				try {
+					const { getGroupPapers } = await import('@/api/teacher.js');
+					await Promise.all(this.classList.map(async (cls) => {
+						try {
+							const res = await getGroupPapers(teacherId, cls.id);
+							const papers = res?.papers || res?.data?.papers || [];
+							papers.forEach(paper => {
+								const studentId = paper.student_id || paper.author_id || paper.owner_id;
+								const paperId = paper.paper_id || paper.id;
+								const ossKey = paper.oss_key || paper.file_path || paper.file_url || null;
+								const pdfOssKey = paper.pdf_oss_key || null;
+								if (!studentId || !paperId) return;
+								// 在 this.students 中找到对应学生和论文
+								const student = this.students.find(s => String(s.id) === String(studentId));
+								if (student && student.papers) {
+									const targetPaper = student.papers.find(p =>
+										String(p.paperId) === String(paperId) ||
+										String(p.paper_id) === String(paperId) ||
+										String(p.id) === String(paperId)
+									);
+									if (targetPaper) {
+										if (ossKey) targetPaper.ossKey = ossKey;
+										if (pdfOssKey) targetPaper.pdfOssKey = pdfOssKey;
+									}
+								}
+							});
+						} catch (e) {
+							console.warn('[loadAllGroupPapers] 班级失败:', cls.id, e);
+						}
+					}));
+				} catch (e) {
+					console.error('[loadAllGroupPapers] 失败:', e);
+				}
+			},
+			
 			// 加载未上传论文的成员列表
 			async loadUnuploadedMembers() {
 				if (!this.selectedClass) return;
@@ -1978,6 +2165,7 @@
 			backToClassList() {
 				this.selectedClass = null;
 				this.students = [];
+				this.isAllClassMode = false;
 			},
 			// 加载仪表盘数据（核心改造：优化加载逻辑和失败处理）
 			async loadDashboardData() {
@@ -3251,7 +3439,7 @@
 				if (!scrollContainer || !el) return;
 				this.scrollPreviewToRect(scrollContainer, el, 0);
 			},
-			runAgentLocateInPreview(issue, chunk) {
+		runAgentLocateInPreview(issue, chunk, { skipFlash = false } = {}) {
 				try {
 					this.agentLocateLog('======== 开始定位 ========');
 					const ctx = this.getDocxPreviewScrollContext();
@@ -3265,8 +3453,40 @@
 					const el = this.findDomTargetForAgentLocate(issue, chunk, ctx);
 					if (el) {
 						this.agentLocateLog('走分支: 段落 DOM', el.tagName, el.className && String(el.className).slice(0, 60));
-						this.flashAgentLocateTarget(el);
+						if (!skipFlash) {
+							this.flashAgentLocateTarget(el);
+						}
 						this.scrollPreviewToAgentElement(ctx.previewArea, el);
+
+						// 记录准确的DOM定位结果供【添加到批注】使用
+						const bodyPs = ctx.wrapper ? this.collectDocxBodyParagraphEls(ctx.wrapper) : [];
+						let paragraphIndex = null;
+						if (el.tagName === 'P') {
+							const idx = bodyPs.indexOf(el);
+							paragraphIndex = idx >= 0 ? idx + 1 : null;
+						} else {
+							// 非P元素（如TABLE），尝试查找最近的P或data属性
+							const closestP = el.closest('p');
+							if (closestP) {
+								const idx = bodyPs.indexOf(closestP);
+								paragraphIndex = idx >= 0 ? idx + 1 : null;
+							} else {
+								const pWithData = el.querySelector('[data-agent-body-p-index]');
+								if (pWithData) {
+									paragraphIndex = parseInt(pWithData.getAttribute('data-agent-body-p-index'), 10) || null;
+								}
+							}
+						}
+						// 计算百分比坐标（与手动添加批注保持一致）
+						const containerRect = ctx.docxContainer.getBoundingClientRect();
+						const elRect = el.getBoundingClientRect();
+						const coordX = parseFloat(((elRect.left - containerRect.left) / containerRect.width * 100).toFixed(2));
+						const coordY = parseFloat(((elRect.top - containerRect.top) / containerRect.height * 100).toFixed(2));
+						this._lastAgentLocateResult = {
+							paragraphIndex: paragraphIndex != null ? String(paragraphIndex) : null,
+							coordinates: { x: coordX, y: coordY }
+						};
+
 						uni.showToast({ title: '已按段落定位', icon: 'none', duration: 1400 });
 						return;
 					}
@@ -3277,11 +3497,17 @@
 						const ok = this.scrollPreviewToAgentCoordinates(coords, ctx);
 						if (ok) {
 							this.agentLocateLog('走分支: 坐标滚动 成功');
+							// 记录原始坐标供批注回退使用
+							this._lastAgentLocateResult = {
+								paragraphIndex: null,
+								coordinates: { x: coords.x || 0, y: coords.y || 0 }
+							};
 							uni.showToast({ title: '已按坐标滚动到大致位置', icon: 'none', duration: 1400 });
 							return;
 						}
 						this.agentLocateLog('坐标滚动返回 false（wrapper/分页异常）');
 					}
+					this._lastAgentLocateResult = null;
 					this.agentLocateLog('======== 定位失败：无可用段落/坐标/文本 ========');
 					uni.showToast({
 						title: '缺少 xml_path / 坐标 / 原文片段，无法定位',
@@ -3311,6 +3537,71 @@
 						requestAnimationFrame(() => requestAnimationFrame(() => this.runAgentLocateInPreview(issue, chunk)));
 					} else {
 						setTimeout(() => this.runAgentLocateInPreview(issue, chunk), 50);
+					}
+				});
+			},
+			// 将AI审查问题添加到批注
+			addAgentIssueToAnnotation(issue, chunk) {
+				const now = Date.now();
+				if (!this._agentLocateDebounceAt) this._agentLocateDebounceAt = 0;
+				if (now - this._agentLocateDebounceAt < 380) {
+					return;
+				}
+				this._agentLocateDebounceAt = now;
+
+				// 1. 定位到论文对应位置
+				this.$nextTick(() => {
+					const doLocate = () => {
+						this.runAgentLocateInPreview(issue, chunk, { skipFlash: true });
+						// 2. 填充批注数据
+						const sid = this.resolveAgentSectionIdForLookup(issue, chunk);
+						const meta = sid != null ? this.getAgentSectionMetaForLocate(sid) : null;
+
+						// selectedText：优先用 meta.raw_text，其次 chunk.raw_text
+						const rawText = meta?.raw_text || chunk?.raw_text || chunk?.rawText || '';
+						this.selectedText = rawText;
+
+						// 优先使用实际DOM定位结果，失败时回退到AI原始数据
+						const locateResult = this._lastAgentLocateResult;
+						if (locateResult && locateResult.coordinates) {
+							this.selectedCoordinates = locateResult.coordinates;
+						} else {
+							const coords = this.resolveAgentIssueCoordinates(issue, chunk);
+							this.selectedCoordinates = coords ? { x: coords.x || 0, y: coords.y || 0 } : { x: 0, y: 0 };
+						}
+
+						if (locateResult && locateResult.paragraphIndex != null) {
+							this.selectedParagraph = locateResult.paragraphIndex;
+						} else {
+							const xmlStr = this.resolveAgentXmlPathString(issue, chunk);
+							let n = this.getWordParagraphNumberFromXmlPath(xmlStr);
+							if (n == null) {
+								n = this.resolveAgentSectionIdAsParagraphIndex1Based(issue, chunk);
+							}
+							this.selectedParagraph = n != null ? String(n) : '0';
+						}
+
+						// 构建预填充批注内容
+						const issueType = this.formatAgentIssueType(issue.issue_type || issue.issueType);
+						const message = issue.message || issue.msg || '';
+						const suggestion = issue.suggestion || '';
+						let content = '';
+						if (issueType) content += `【${issueType}】`;
+						if (message) content += message;
+						if (suggestion) content += `\n建议：${suggestion}`;
+						this.annotationInputContent = content;
+
+						// 3. 打开批注弹窗
+						this.showAnnotationInputModal = true;
+
+						// 清空定位结果缓存，避免影响下次
+						this._lastAgentLocateResult = null;
+					};
+
+					if (typeof requestAnimationFrame !== 'undefined') {
+						requestAnimationFrame(() => requestAnimationFrame(doLocate));
+					} else {
+						setTimeout(doLocate, 50);
 					}
 				});
 			},
@@ -3394,12 +3685,13 @@
 				this.currentStudent = student;
 				// 创建一个新的响应式对象，避免直接修改原始数据
 				const targetPaper = paper || student.paper || (student.papers && student.papers[0]);
+				console.log('[openPaperReview] paper参数:', paper, 'targetPaper keys:', targetPaper ? Object.keys(targetPaper) : 'null');
 				if (targetPaper) {
 					const newPaper = { ...targetPaper };
 					newPaper.annotations = [];
 					newPaper.annotationCount = 0;
 					this.currentPaper = newPaper;
-					console.log('[openPaperReview] currentPaper 已设置:', this.resolvePaperId(this.currentPaper));
+					console.log('[openPaperReview] currentPaper 已设置:', this.resolvePaperId(this.currentPaper), 'ossKey:', this.currentPaper.ossKey, 'oss_key:', this.currentPaper.oss_key);
 				} else {
 					this.currentPaper = null;
 				}
@@ -3421,13 +3713,18 @@
 				// 如果是本地测试学生，加载真实论文内容
 				if (student.isLocalTest && student.localFiles && student.localFiles.paper) {
 					await this.loadLocalPaperContentForReview(student);
-				} else if (this.currentPaper && this.currentPaper.ossKey && !student.isLocalTest) {
+				} else if (this.currentPaper && (this.currentPaper.ossKey || this.currentPaper.oss_key || this.currentPaper.osskey) && !student.isLocalTest) {
+					// 兼容多种字段名<br>
+					if (!this.currentPaper.ossKey && (this.currentPaper.oss_key || this.currentPaper.osskey)) {
+						this.currentPaper.ossKey = this.currentPaper.oss_key || this.currentPaper.osskey;
+					}
 					// 接口返回的论文有 ossKey，从后端加载
 					console.log('通过 ossKey 加载论文:', this.currentPaper.ossKey);
 					await this.loadPaperFromBackend(student, this.currentPaper);
 				} else if (this.currentPaper && !this.currentPaper.filePath && !student.isLocalTest) {
 					// 接口返回的论文没有文件路径，显示提示
 					console.warn('论文没有文件路径，无法加载内容:', student, this.currentPaper);
+					console.warn('currentPaper 字段:', JSON.stringify(Object.keys(this.currentPaper || {})));
 					uni.showToast({
 						title: '论文内容暂不可用，请联系管理员',
 						icon: 'none',
@@ -3881,7 +4178,8 @@
 					uni.showLoading({ title: '正在加载论文...' });
 					
 					const currentPaper = paper || student.paper || (student.papers && student.papers[0]);
-					const ossKey = currentPaper?.ossKey;
+					const ossKey = currentPaper?.ossKey || currentPaper?.oss_key || currentPaper?.osskey;
+					console.log('[loadPaperFromBackend] ossKey:', ossKey, 'keys:', Object.keys(currentPaper || {}));
 					if (!ossKey) {
 						throw new Error('论文文件路径不存在');
 					}
@@ -5607,6 +5905,93 @@
 				this.currentPage = 1;
 				this.showMessageCenter = false;
 			},
+			// 切换班级（班级筛选器）
+			async switchClass(classItem) {
+				this.showClassDropdown = false;
+				if (!classItem) {
+					// 选择全部班级：并发加载所有班级数据合并显示
+					await this.loadAllClassStudents();
+					return;
+				}
+				if (this.selectedClass && this.selectedClass.id === classItem.id && !this.isAllClassMode) return;
+				this.currentPage = 1;
+				this.isAllClassMode = false;
+				await this.selectClass(classItem);
+			},
+			// 全部班级模式：并发加载所有班级的学生数据合并
+			async loadAllClassStudents() {
+				if (!this.classList || this.classList.length === 0) return;
+				this.loading = true;
+				this.isAllClassMode = true;
+				this.currentPage = 1;
+				try {
+					const allStudents = [];
+					await Promise.all(this.classList.map(async (cls) => {
+						try {
+							const res = await getStudentsByClass(cls.id);
+							let studentsRaw = null;
+							if (res && Array.isArray(res.students)) studentsRaw = res.students;
+							else if (res && res.code === 200 && res.data) studentsRaw = Array.isArray(res.data.students) ? res.data.students : res.data;
+							else if (Array.isArray(res)) studentsRaw = res;
+							if (!studentsRaw) return;
+							const statusMap = { 'pending': '待审阅', 'feedback': '已审阅', 'updated': '已更新', 'pending_update': '待更新', 'finalized': '已定稿' };
+							studentsRaw.forEach(student => {
+								const studentName = student.student_name || student.name || '未知学生';
+								const papers = (student.papers || []).map(p => {
+									const raw = p.paper_status || p.status || 'pending';
+									const status = raw.includes('阅') || raw.includes('传') || raw.includes('稿') || raw.includes('新') ? raw : (statusMap[raw] || raw);
+									const version = String(p.paper_version || p.version || '1').replace(/^v/i, '');
+									let title = p.title || p.paper_title || null;
+									if (!title) {
+										const filePath = p.oss_key || p.file_path || p.file_url;
+										if (filePath) {
+											const fileName = filePath.split('/').pop();
+											if (fileName) {
+												const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+												const idx = nameWithoutExt.indexOf('_');
+												title = idx !== -1 ? nameWithoutExt.substring(idx + 1) : nameWithoutExt;
+											}
+										}
+										if (!title) title = `${studentName}的论文`;
+									}
+									return {
+										...p,
+										paperId: p.paper_id || p.id,
+										paper_id: p.paper_id != null ? p.paper_id : p.id,
+										title,
+										status,
+										version,
+										ossKey: p.oss_key || p.osskey || p.file_path || p.file_url || p.ossKey || null,
+										pdfOssKey: p.pdf_oss_key || p.pdfosskey || null,
+										updateTime: p.paper_update_time || p.updated_at || ''
+									};
+								});
+								allStudents.push({
+									...student,
+									id: student.student_id || student.id,
+									name: studentName,
+									studentNumber: student.student_number || '', // 真实学号
+									className: cls.name,
+									papers
+								});
+								if (allStudents.length === 1 && papers.length > 0) {
+									console.log('[loadAllClassStudents] 第一个学生第一篇论文:', JSON.stringify(papers[0], (k,v) => k==='docxBlob' ? '[Blob]' : v));
+								}
+							});
+						} catch (e) {
+							console.warn('加载班级', cls.id, '学生失败:', e);
+						}
+					}));
+					this.students = allStudents;
+					// 补充所有班级的论文文件路径（ossKey）
+					await this.loadAllGroupPapers();
+					this.updateStats();
+				} catch (e) {
+					console.error('loadAllClassStudents 失败:', e);
+				} finally {
+					this.loading = false;
+				}
+			},
 			// 触发搜索：将输入框值应用到搜索词，并重置到第1页
 			doSearch() {
 				this.searchKeyword = this.searchInput.trim();
@@ -6972,6 +7357,20 @@
 					pendingUpdate: pendingUpdate, // 待修改数量（原待更新+原已审阅）
 					finalized: finalized // 已定稿数量
 				};
+				// 回写到班级列表，使班级卡片显示真实统计数据
+				// 全部班级模式下不回写，避免把汇总数据污染单个班级卡片
+				if (this.selectedClass && !this.isAllClassMode) {
+					const idx = this.classList.findIndex(c => c.id === this.selectedClass.id);
+					if (idx !== -1) {
+						this.classList[idx] = {
+							...this.classList[idx],
+							studentCount: total,
+							pendingReviewCount: pending,
+							pendingUpdateCount: pendingUpdate,
+							finalizedCount: finalized
+						};
+					}
+				}
 			},
 			
 			// 获取模拟学生数据（已弃用，保留空方法以兼容旧代码）
@@ -7357,7 +7756,7 @@
   padding: 0 32px;
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 300;
 }
 
 .header-left {
@@ -7485,7 +7884,7 @@
   background: white;
   border-radius: 16px;
   box-shadow: var(--shadow-xl);
-  z-index: 100;
+  z-index: 300;
   overflow: hidden;
   opacity: 0;
   transform: translateY(-10px) scale(0.95);
@@ -7665,10 +8064,12 @@
 /* Bento Filter */
 .bento-filter-bar {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 200px 200px 1fr;
   gap: 12px;
   margin-bottom: 12px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 200;
 }
 
 .filter-card {
@@ -7730,6 +8131,63 @@
   color: var(--on-surface);
 }
 
+.filter-chevron {
+  font-size: 18px;
+  color: var(--on-surface-variant);
+  margin-left: auto;
+}
+
+.class-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 200px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+  border: 1px solid var(--outline-variant);
+  z-index: 9999;
+  overflow: hidden;
+  padding: 6px 0;
+}
+
+.class-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--on-surface);
+  transition: background 0.15s;
+}
+
+.class-dropdown-item:hover {
+  background: var(--surface-container-low);
+}
+
+.class-dropdown-item.active {
+  background: rgba(0, 91, 191, 0.08);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.class-dropdown-item .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+}
+
+.class-dropdown-item.active .material-symbols-outlined {
+  color: var(--primary);
+}
+
+.check-icon {
+  margin-left: auto;
+  font-size: 16px !important;
+  color: var(--primary) !important;
+}
+
 .search-card {
   cursor: default;
 }
@@ -7757,6 +8215,23 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+  transition: opacity 0.15s ease;
+}
+
+.thesis-list-container.dropdown-open {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.thesis-list-container.dropdown-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 24px;
+  z-index: 1;
+  cursor: pointer;
 }
 
 .loading-state,
@@ -7870,6 +8345,12 @@
 .student-id {
   font-size: 12px;
   color: var(--on-surface-variant);
+}
+
+.student-class {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  margin-top: 2px;
 }
 
 .status-badge {
@@ -8066,28 +8547,41 @@
 }
 
 .class-stats {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
 
 .stat-box {
   flex: 1;
   background: var(--surface-container-low);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 10px 6px;
   text-align: center;
+}
+
+.stat-box--pending .stat-value {
+  color: #f59e0b;
+}
+
+.stat-box--update .stat-value {
+  color: #8b5cf6;
+}
+
+.stat-box--finalized .stat-value {
+  color: #10b981;
 }
 
 .stat-value {
   display: block;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 800;
   color: var(--primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--on-surface-variant);
   font-weight: 500;
 }
@@ -8421,8 +8915,8 @@
 .review-modal-content {
   background: white;
   border-radius: 20px;
-  width: 90%;
-  max-width: 1400px;
+  width: 95vw;
+  max-width: 1650px;
   height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
@@ -8609,7 +9103,7 @@
 }
 
 .ai-summary-panel {
-  width: 300px;
+  width: 400px;
   background: linear-gradient(180deg, #f8f9ff 0%, #ffffff 100%);
   border-right: 1px solid var(--surface-container-high);
   display: flex;
@@ -8679,9 +9173,24 @@
   font-size: 18px;
 }
 
+.btn-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: btn-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes btn-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .ai-agent-hint {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--on-surface-variant);
   margin-bottom: 14px;
@@ -8693,7 +9202,7 @@
   border-radius: 10px;
   background: rgba(185, 28, 28, 0.08);
   border: 1px solid rgba(185, 28, 28, 0.25);
-  font-size: 12px;
+  font-size: 13px;
   color: #b91c1c;
   line-height: 1.5;
 }
@@ -8707,7 +9216,7 @@
 
 .ai-agent-task-line {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--on-surface-variant);
   line-height: 1.6;
 }
@@ -8768,7 +9277,7 @@
   display: inline-block;
   padding: 3px 10px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--on-surface-variant);
   background: var(--surface-container-high);
@@ -8797,7 +9306,7 @@
 
 .ai-agent-chunk-head {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--on-surface);
   margin-bottom: 6px;
@@ -8821,7 +9330,7 @@
 
 .ai-agent-issue-type {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #4f46e5;
   margin-bottom: 2px;
@@ -8829,14 +9338,14 @@
 
 .ai-agent-issue-msg {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--on-surface-variant);
   line-height: 1.45;
 }
 
 .ai-agent-issue-sug {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--on-surface);
   margin-top: 2px;
   line-height: 1.45;
@@ -8860,9 +9369,37 @@
 
 .ai-agent-issue-locate-hint {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: #4f46e5;
   margin-top: 4px;
+}
+
+.ai-agent-issue-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.ai-agent-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.08);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.ai-agent-action-btn .material-symbols-outlined {
+  font-size: 13px;
+}
+
+.ai-agent-action-btn:active {
+  background: rgba(79, 70, 229, 0.18);
 }
 
 .paper-preview-area {

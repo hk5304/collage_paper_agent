@@ -21,10 +21,6 @@
           <text class="material-symbols-outlined">dashboard</text>
           <text class="nav-label">工作台</text>
         </view>
-        <view class="nav-item" @click="goToPaperList">
-          <text class="material-symbols-outlined">description</text>
-          <text class="nav-label">论文列表</text>
-        </view>
         <view class="nav-item" @click="goToAttachmentList">
           <text class="material-symbols-outlined">folder_open</text>
           <text class="nav-label">附件列表</text>
@@ -178,62 +174,111 @@
             <text class="section-title">我的论文</text>
           </view>
 
-          <view class="thesis-list" v-if="paperGroups.length > 0">
-            <view v-for="group in paperGroups" :key="group.teacherId" class="teacher-group">
-              <view class="group-title">
-                <text class="group-title-icon material-symbols-outlined">school</text>
-                <text>指导教师：{{ group.teacherName }}</text>
-              </view>
-              
-              <view v-for="paper in group.papers" :key="paper.id" class="thesis-card" @click="navigateToPaperDetail(paper)">
-                <!-- 左侧：头像与学生信息 -->
-                <view class="card-avatar-section">
-                  <view class="student-avatar">
-                    <text>{{ userNameInitial }}</text>
-                  </view>
-                  <view class="student-info">
-                    <text class="student-name">{{ userInfo.name }}</text>
-                    <text class="student-id">{{ userInfo.college }}</text>
-                    <view class="status-badge" :class="'status-' + (paper.status || 'default')">
-                      <view class="status-dot"></view>
-                      <text>{{ paper.statusText || getStatusText(paper.status) }}</text>
-                    </view>
-                  </view>
-                </view>
+          <view v-if="paperCardLoading" class="paper-card-loading-container">
+            <view class="paper-card-loading-spinner"></view>
+            <text class="paper-card-loading-text">正在加载论文数据...</text>
+          </view>
 
-                <!-- 中间：论文详情 -->
-                <view class="card-detail-section">
-                  <view class="detail-header">
-                    <text class="detail-label">论文标题</text>
+          <transition-group
+            v-else-if="paperCards.length > 0"
+            name="paper-list"
+            tag="view"
+            class="paper-list workbench-paper-list single-card"
+          >
+            <view
+              v-for="paper in paperCards"
+              :key="paper.id"
+              :id="'paper-' + paper.id"
+              class="paper-card workbench-paper-card"
+              @click="viewPaper(paper)"
+            >
+              <view class="paper-header">
+                <view class="paper-info">
+                  <text class="paper-title">{{ paper.title }}<text class="paper-preview-hint"> 点击预览 👁</text></text>
+                  <text class="paper-meta">指导教师：{{ paper.teacher }} | 版本：v{{ paper.version }}</text>
+                </view>
+                <view class="paper-header-actions" @click.prevent.stop>
+                  <view class="refresh-status-btn" @click.prevent.stop="fetchAllPaperStatus">
+                    <text class="refresh-text">刷新</text>
                   </view>
-                  <text class="paper-title">{{ paper.title || '未命名论文' }}</text>
-                  <view class="paper-meta">
-                    <view class="meta-item">
-                      <text class="meta-icon material-symbols-outlined">description</text>
-                      <text>Word 文档</text>
+                </view>
+              </view>
+
+              <view class="paper-content-wrapper">
+                <view class="paper-content">
+                  <view class="paper-detail">
+                    <text class="detail-label">最后更新：</text>
+                    <text class="detail-value">{{ paper.updateTime }}</text>
+                  </view>
+
+                  <view class="progress-section">
+                    <view class="progress-track">
+                      <view class="progress-step" :class="{ active: displayStep(paper.status) >= 1, completed: displayStep(paper.status) > 1 }">
+                        <view class="step-circle">1</view>
+                        <text class="step-text">待审阅</text>
+                      </view>
+                      <view class="progress-line" :class="{ active: displayStep(paper.status) >= 2 }">
+                        <view class="line-flow" v-if="displayStep(paper.status) >= 2"></view>
+                      </view>
+                      <view class="progress-step" :class="{ active: displayStep(paper.status) >= 2, completed: displayStep(paper.status) > 2 }">
+                        <view class="step-circle">2</view>
+                        <text class="step-text">待修改</text>
+                      </view>
+                      <view class="progress-line" :class="{ active: displayStep(paper.status) >= 3 }">
+                        <view class="line-flow" v-if="displayStep(paper.status) >= 3"></view>
+                      </view>
+                      <view class="progress-step" :class="{ active: displayStep(paper.status) >= 3 }">
+                        <view class="step-circle">3</view>
+                        <text class="step-text">已定稿</text>
+                      </view>
                     </view>
-                    <view class="meta-item">
-                      <text class="meta-icon material-symbols-outlined">tag</text>
-                      <text>v{{ paper.version || '1.0' }}</text>
+                  </view>
+
+                  <view class="notice-section" v-if="paper.statusHistory && paper.statusHistory.length > 0">
+                    <view class="notice-header">
+                      <text class="notice-title">状态记录</text>
                     </view>
-                    <view class="meta-item" v-if="paper.fileSizeText">
-                      <text class="meta-icon material-symbols-outlined">inventory_2</text>
-                      <text>{{ paper.fileSizeText }}</text>
-                    </view>
-                    <view class="meta-item">
-                      <text class="meta-icon material-symbols-outlined">schedule</text>
-                      <text>{{ paper.updateTime || '新建' }}</text>
+                    <view class="notice-list">
+                      <view v-for="(record, nIdx) in paper.statusHistory.slice(0, 2)" :key="nIdx" class="notice-item">
+                        <view class="notice-time">{{ record.time }}</view>
+                        <view class="notice-content">{{ record.content }}</view>
+                      </view>
                     </view>
                   </view>
                 </view>
+              </view>
+
+              <view class="paper-actions">
+                <button class="action-btn annotation-btn" :class="{ 'disabled': !canViewAnnotations(paper) }" @click.stop="viewAnnotations(paper)">
+                  <text class="btn-icon material-symbols-outlined">chat</text>
+                  <text>查看批注</text>
+                </button>
+                <button class="action-btn review-btn" :class="{ 'disabled': !canViewReview(paper) }" @click.stop="viewReview(paper)">
+                  <text class="btn-icon material-symbols-outlined">fact_check</text>
+                  <text>查看审阅</text>
+                </button>
+                <button class="action-btn download-btn" @click.stop="downloadPaper(paper)">
+                  <text class="btn-icon material-symbols-outlined">download</text>
+                  <text>下载论文</text>
+                </button>
+                <button class="action-btn update-btn" :class="{ 'disabled': !canUpdatePaper(paper.status) }" @click.stop="handleUpdateClick(paper)">
+                  <text class="btn-icon material-symbols-outlined">update</text>
+                  <text>更新论文</text>
+                </button>
+                <button class="action-btn delete-btn" @click.stop="deletePaper(paper.id, paper.title)">
+                  <text class="btn-icon material-symbols-outlined">delete</text>
+                  <text>删除</text>
+                </button>
               </view>
             </view>
+          </transition-group>
+
+          <view class="paper-card-empty-container" v-else>
+            <text class="paper-card-empty-icon material-symbols-outlined">inbox</text>
+            <text class="paper-card-empty-text">暂无论文数据</text>
+            <text class="paper-card-empty-subtext">请先上传论文以查看列表</text>
           </view>
 
-          <view class="empty-state" v-else>
-            <text class="empty-icon material-symbols-outlined">inbox</text>
-            <text class="empty-text">暂无论文，请上传新论文</text>
-          </view>
         </view>
 
       </view>
@@ -299,6 +344,82 @@
     <version-compare-modal v-if="modal.compare" :paper="currentPaper" :version1="versionCompare.v1" :version2="versionCompare.v2" :version1-label="versionCompare.label1" :version2-label="versionCompare.label2" @close="closeCompare" @version1-change="onVersion1Change" @version2-change="onVersion2Change" />
 
     <teacher-select-modal v-if="modal.teacherSelect" :teacher-name="upload.teacherName" :teacher-id="upload.teacherId" @close="cancelTeacherSelect" @confirm="onTeacherSelectConfirm" @teacher-name-change="upload.teacherName = $event" @teacher-id-change="upload.teacherId = $event" />
+
+    <ConfirmModal
+      :visible="showConfirmModal"
+      :title="confirmModalTitle"
+      :content="confirmModalContent"
+      @confirm="handleConfirmModalConfirm"
+      @cancel="handleConfirmModalCancel"
+    />
+
+    <view class="paper-card-review-modal" v-if="showReviewModal" @click="closeReviewModal">
+      <view class="paper-card-review-content" @click.stop>
+        <view class="paper-card-modal-header">
+          <text class="paper-card-modal-title">论文审阅详情</text>
+          <text class="paper-card-modal-close material-symbols-outlined" @click="closeReviewModal">close</text>
+        </view>
+        <view class="paper-card-modal-body">
+          <view class="paper-card-review-info" v-if="currentReview">
+            <text class="paper-card-review-title">{{ currentReview.paperTitle }}</text>
+            <text class="paper-card-review-meta">论文ID：{{ currentReview.paperId }}</text>
+          </view>
+          <view class="paper-card-review-section" v-if="currentReview">
+            <view class="paper-card-review-section-title">审阅内容</view>
+            <view class="paper-card-review-content-text">{{ currentReview.reviewContent }}</view>
+          </view>
+          <view class="paper-card-review-time" v-if="currentReview && currentReview.reviewTime">
+            <text class="paper-card-review-time-label">审阅时间：</text>
+            <text class="paper-card-review-time-value">{{ currentReview.reviewTime }}</text>
+          </view>
+          <view class="paper-card-review-empty" v-else>
+            <text class="paper-card-empty-icon material-symbols-outlined">fact_check</text>
+            <text class="paper-card-empty-text">暂无审阅内容</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="paper-card-update-modal" v-if="showUpdateModal" @click.self="closeUpdateModal">
+      <view class="paper-card-update-content">
+        <view class="paper-card-modal-header">
+          <text class="paper-card-modal-title">更新论文</text>
+          <text class="paper-card-modal-close" @click="closeUpdateModal">×</text>
+        </view>
+        <view class="paper-card-modal-body">
+          <view class="paper-card-update-info" v-if="updatePaperItem">
+            <text class="paper-card-update-title">{{ updatePaperItem.title }}</text>
+            <text class="paper-card-update-version">当前版本：v{{ updatePaperItem.version }}</text>
+          </view>
+          <view class="paper-card-update-tips">
+            <text>支持格式：docx（Word 文档）</text>
+            <text>文件大小：≤100MB</text>
+          </view>
+          <view class="paper-card-version-section">
+            <text class="paper-card-input-label">新版本号：</text>
+            <input
+              class="paper-card-version-input"
+              v-model="updateVersion"
+              type="text"
+              placeholder="请输入新版本号（如 v2.0）"
+            />
+            <text class="paper-card-version-hint">必须大于当前版本 v{{ updatePaperItem?.version }}</text>
+          </view>
+          <button class="paper-card-file-btn" @click="chooseUpdateFile">选择文件</button>
+          <view v-if="updateSelectedFile" class="paper-card-file-info">
+            <text class="paper-card-file-name">{{ updateSelectedFile.name }}</text>
+            <text class="paper-card-file-size">{{ formatFileSize(updateSelectedFile.size) }}</text>
+          </view>
+          <button
+            class="paper-card-submit-btn"
+            :disabled="!updateSelectedFile || !updateVersion"
+            @click="submitUpdatePaper"
+          >
+            提交更新
+          </button>
+        </view>
+      </view>
+    </view>
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
@@ -378,14 +499,17 @@
 import PaperDetailModal from '../../components/PaperDetailModal.vue';
 import VersionCompareModal from '../../components/VersionCompareModal.vue';
 import TeacherSelectModal from '../../components/TeacherSelectModal.vue';
+import ConfirmModal from '../../components/ConfirmModal.vue';
 
 // 导入API方法
-import { getWorkbenchData, uploadPaper, uploadAttachment, getAttachmentList, getReceivedNotifications, getReceivedDDL, getSubByUsername, getTeacherByStudentId, createPaperStatus, getPaperDetail, changePassword } from '../../api/student.js';
+import { getWorkbenchData, getPaperList, uploadPaper, uploadAttachment, getAttachmentList, getReceivedNotifications, getReceivedDDL, getSubByUsername, getTeacherByStudentId, createPaperStatus, getPaperDetail, changePassword, deletePaper, getAnnotationsByPaperId, updatePaperVersion, updatePaperStatus, getPaperReview } from '../../api/student.js';
+import { config } from '../../api/config.js';
 import { getUserId, clearLoginState } from '../../utils/auth.js';
 import {
   studentDisplayStatusLabel,
   mapBackendStatusToStudentDisplayBucket,
-  STUDENT_DISPLAY_BUCKETS
+  STUDENT_DISPLAY_BUCKETS,
+  studentDisplayStep
 } from '../../utils/studentPaperDisplayStatus.js';
 
 // 导入主题管理工具
@@ -415,7 +539,8 @@ export default {
   components: {
     PaperDetailModal,
     VersionCompareModal,
-    TeacherSelectModal
+    TeacherSelectModal,
+    ConfirmModal
   },
   
   data() {
@@ -432,6 +557,7 @@ export default {
       
       // 加载状态
       loadingCount: 0,
+      paperCardLoading: true,
       
       // 用户信息
       userInfo: {
@@ -532,7 +658,17 @@ export default {
         visible: false,
         title: '',
         content: ''
-      }
+      },
+      showReviewModal: false,
+      currentReview: null,
+      showUpdateModal: false,
+      updatePaperItem: null,
+      updateVersion: '',
+      updateSelectedFile: null,
+      showConfirmModal: false,
+      confirmModalTitle: '',
+      confirmModalContent: '',
+      confirmModalCallback: null
     };
   },
   computed: {
@@ -574,6 +710,10 @@ export default {
     // 是否显示加载状态
     isLoading() {
       return this.loadingCount > 0;
+    },
+    
+    paperCards() {
+      return this.paperGroups.flatMap(group => Array.isArray(group.papers) ? group.papers : []);
     },
     
     // 截止时间相关通知
@@ -781,34 +921,6 @@ export default {
       uni.showToast({ title: '已在工作台', icon: 'none', duration: 1000 });
     },
     
-    goToPaperList() {
-      this.navigateTo('/pages/student/paperList');
-    },
-    
-    // 跳转到论文列表并定位到指定论文
-    navigateToPaperDetail(paper) {
-      if (!paper || !paper.id) {
-        uni.showToast({ title: '论文信息无效', icon: 'none' });
-        return;
-      }
-      
-      // 将目标论文信息存储到本地，供论文列表页面读取
-      const targetPaperInfo = {
-        id: paper.id,
-        status: paper.status,
-        title: paper.title
-      };
-      uni.setStorageSync('targetPaperInfo', targetPaperInfo);
-      
-      // 触发淡出动画
-      this.isPageFadeOut = true;
-      
-      // 等待动画完成后再跳转
-      setTimeout(() => {
-        this.navigateTo('/pages/student/paperList');
-      }, 300);
-    },
-    
     goToAttachmentList() {
       this.navigateTo('/pages/student/attachmentList');
     },
@@ -992,7 +1104,7 @@ export default {
     getSinglePaperLimitMessage() {
       const currentPaper = this.getExistingPapers()[0] || null;
       const paperTitle = currentPaper?.title || '当前论文';
-      return `当前账号已存在论文《${paperTitle}》。\n每位学生只能上传一篇论文。\n如需重新上传，请先前往“论文列表”删除当前论文，再返回工作台上传新论文。`;
+      return `当前账号已存在论文《${paperTitle}》。\n每位学生只能上传一篇论文。\n如需重新上传，请先在当前工作台删除这篇论文，再上传新论文。`;
     },
 
     showSinglePaperLimitDialog() {
@@ -1602,32 +1714,53 @@ export default {
      */
     async fetchAndApplyTeacherUsername(studentUsername) {
       try {
-        const res = await getTeacherByStudentId(studentUsername);
+        const userInfo = uni.getStorageSync('userInfo') || {};
+        const studentIdentifier = studentUsername || userInfo.username || userInfo.owner_id || userInfo.student_id || '';
+        if (!studentIdentifier) return;
+
+        const res = await getTeacherByStudentId(studentIdentifier);
         const teachers = res?.teachers || [];
         if (teachers.length === 0) return;
         
-        // 构建 教师自增ID → 教师工号 的映射表
+        // 这里直接使用接口返回的 teacher_id 作为展示值
         const teacherMap = {};
         teachers.forEach(t => {
-          teacherMap[t.id] = t.teacher_id; // t.teacher_id 是工号
+          teacherMap[String(t.id)] = t.teacher_id || '';
         });
+        const singleTeacherDisplay = teachers.length === 1 ? (teachers[0].teacher_id || '') : '';
         
         // 更新论文分组中匹配的教师显示
         this.paperGroups.forEach(group => {
-          const rawTeacherId = group.teacherId;
+          const rawTeacherId = String(group.teacherId || '');
           if (rawTeacherId && teacherMap[rawTeacherId]) {
             group.teacherName = teacherMap[rawTeacherId];
+          } else if (singleTeacherDisplay) {
+            group.teacherName = singleTeacherDisplay;
           }
           // 同时更新每篇论文的 teacher 字段
           if (group.papers) {
             group.papers.forEach(paper => {
-              if (paper._rawTeacherId && teacherMap[paper._rawTeacherId]) {
-                paper.teacher = teacherMap[paper._rawTeacherId];
+              const paperTeacherId = String(paper._rawTeacherId || '');
+              if (paperTeacherId && teacherMap[paperTeacherId]) {
+                paper.teacher = teacherMap[paperTeacherId];
+              } else if (
+                singleTeacherDisplay &&
+                (!paper.teacher ||
+                  paper.teacher === '指导教师' ||
+                  /^教师ID[:：]/.test(String(paper.teacher).trim()) ||
+                  /^teacher\s*id[:：]/i.test(String(paper.teacher).trim()))
+              ) {
+                paper.teacher = singleTeacherDisplay;
               }
             });
           }
         });
         
+        this.savePapersToLocalStorage();
+        if (this.cache.api.paperWorkbenchData) {
+          this.cache.api.paperWorkbenchData = JSON.parse(JSON.stringify(this.paperGroups));
+          this.cache.apiTime.paperWorkbenchData = Date.now();
+        }
         // 触发视图更新
         this.$forceUpdate();
       } catch (err) {
@@ -2175,13 +2308,6 @@ export default {
       return false;
     },
     
-    // 页面导航
-    goToPaperList() {
-      uni.navigateTo({
-        url: '/pages/student/paperList'
-      });
-    },
-    
     goToAttachmentList() {
       uni.navigateTo({
         url: '/pages/student/attachmentList'
@@ -2189,6 +2315,906 @@ export default {
     },
     
     // 工具方法
+    // ===== 论文卡片：与 paperList 对齐的最终实现 =====
+    getStudentPaperStorageKey(userId = null) {
+      const userInfo = uni.getStorageSync('userInfo') || {};
+      const scopedUserId = userId || parseInt(userInfo.sub || 0, 10);
+      return scopedUserId ? `studentPapers_${scopedUserId}` : 'studentPapers';
+    },
+
+    updatePaperInList(paperId, updates) {
+      const paper = this.findPaperById(paperId);
+      if (paper) {
+        Object.assign(paper, updates);
+      }
+      if (this.currentPaper && this.currentPaper.id === paperId) {
+        Object.assign(this.currentPaper, updates);
+      }
+      if (this.updatePaperItem && this.updatePaperItem.id === paperId) {
+        Object.assign(this.updatePaperItem, updates);
+      }
+    },
+
+    savePapersToLocalStorage() {
+      try {
+        const allPapers = this.paperGroups.flatMap(group =>
+          (group.papers || []).map(paper => ({
+            ...paper,
+            teacher: paper.teacher || group.teacherName,
+            teacherName: group.teacherName,
+            teacherId: group.teacherId
+          }))
+        );
+        const storageKey = this.getStudentPaperStorageKey();
+        uni.setStorageSync(storageKey, allPapers);
+        uni.setStorageSync('studentPapers', allPapers);
+      } catch (error) {
+        console.error('保存论文缓存失败:', error);
+      }
+    },
+
+    loadPapersFromLocalStorage(userId = null) {
+      try {
+        const storageKey = this.getStudentPaperStorageKey(userId);
+        const savedPapers = uni.getStorageSync(storageKey) || uni.getStorageSync('studentPapers');
+        if (savedPapers && Array.isArray(savedPapers) && savedPapers.length > 0) {
+          this.paperGroups = this.transformPapersToGroups(savedPapers);
+          this.updatePaperIdsFromGroups();
+          this.updateStats();
+          return true;
+        }
+      } catch (error) {
+        console.error('读取论文缓存失败:', error);
+      }
+      return false;
+    },
+
+    updatePaperIdsFromGroups() {
+      this.paperIds = this.paperCards
+        .map(paper => parseInt(paper.id, 10))
+        .filter(id => !Number.isNaN(id));
+    },
+
+    formatStatusText(status) {
+      if (status == null || String(status).trim() === '') return '待审阅';
+      return studentDisplayStatusLabel(status);
+    },
+
+    buildStatusHistory(detail) {
+      const rawStatus = detail.status || '';
+      const updateTime = detail.updated_at || detail.updateTime || new Date().toLocaleString('zh-CN');
+      return [{
+        time: updateTime,
+        content: `当前状态：${studentDisplayStatusLabel(rawStatus)}`
+      }];
+    },
+
+    formatPaperData(list) {
+      return (list || []).map(item => {
+        const rawStatus = item.status || item.state || item.paper_status || '';
+        const normalizedStatus = String(rawStatus || '').toLowerCase().trim();
+        let paperTitle = item.title || item.name || item.paper_name || item.filename || item.file_name;
+
+        if (!paperTitle && (item.oss_key || item.fileUrl)) {
+          const rawPath = item.oss_key || item.fileUrl;
+          const fileName = rawPath.split('/').pop();
+          if (fileName) {
+            paperTitle = fileName.replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');
+          }
+        }
+
+        if (!paperTitle) {
+          paperTitle = '未命名论文';
+        }
+
+        return {
+          id: item.id || '',
+          title: paperTitle,
+          fileName: item.filename || item.file_name || item.name || item.oss_key || paperTitle,
+          oss_key: item.oss_key || '',
+          pdf_oss_key: item.pdf_oss_key || '',
+          version: String(item.version || item.latest_version || '1.0').replace(/^v/i, ''),
+          teacher: (
+            item.teacher &&
+            !/^教师ID[:：]/.test(String(item.teacher).trim()) &&
+            !/^teacher\s*id[:：]/i.test(String(item.teacher).trim())
+          )
+            ? item.teacher
+            : (item.teacher_name || item.teacher_display_name || item.supervisor_name || '指导教师'),
+          _rawTeacherId: item.teacher_id || item.teacherId || null,
+          status: normalizedStatus,
+          statusText: this.formatStatusText(rawStatus),
+          updateTime: item.updateTime || item.updated_at || item.created_at || '暂无更新时间',
+          fileUrl: item.fileUrl || item.oss_key || item.file_url || '',
+          hasReview: !!item.hasReview,
+          hasAnnotations: !!item.hasAnnotations,
+          statusHistory: item.statusHistory || item.status_history || [
+            {
+              time: item.updateTime || item.updated_at || item.created_at || new Date().toLocaleString('zh-CN'),
+              content: `当前状态：${studentDisplayStatusLabel(rawStatus)}`
+            }
+          ]
+        };
+      });
+    },
+
+    transformPapersToGroups(papers, localPapers = {}) {
+      const formattedPapers = this.formatPaperData(
+        (papers || []).map(paper => ({
+          ...paper,
+          fileUrl: paper.fileUrl || localPapers[paper.id] || paper.oss_key || ''
+        }))
+      );
+
+      const groupsMap = new Map();
+      formattedPapers.forEach(paper => {
+        const teacherId = paper._rawTeacherId || paper.teacherId || `teacher_${paper.id || Date.now()}`;
+        const teacherName = paper.teacher || '指导教师';
+        if (!groupsMap.has(teacherId)) {
+          groupsMap.set(teacherId, {
+            teacherId,
+            teacherName,
+            papers: []
+          });
+        }
+        groupsMap.get(teacherId).papers.push({
+          ...paper,
+          teacher: teacherName,
+          teacherId,
+          _rawTeacherId: paper._rawTeacherId || teacherId
+        });
+      });
+      return Array.from(groupsMap.values());
+    },
+
+    mergePaperDetail(paper, detail = {}) {
+      const mergedPaper = {
+        ...paper,
+        oss_key: detail.oss_key || paper.oss_key || '',
+        pdf_oss_key: detail.pdf_oss_key || paper.pdf_oss_key || '',
+        version: String(detail.version || paper.version || '1.0').replace(/^v/i, ''),
+        updateTime: detail.updated_at || paper.updateTime || '暂无更新时间',
+        fileUrl: detail.oss_key || detail.pdf_oss_key || paper.fileUrl || ''
+      };
+      const normalizedStatus = String(detail.status || paper.status || '').toLowerCase().trim();
+      if (normalizedStatus) {
+        mergedPaper.status = normalizedStatus;
+        mergedPaper.statusText = this.formatStatusText(detail.status || paper.status);
+        mergedPaper.statusHistory = this.buildStatusHistory({
+          ...paper,
+          ...detail,
+          status: detail.status || paper.status
+        });
+      }
+      return mergedPaper;
+    },
+
+    getFileUrl(rawPath) {
+      if (!rawPath) return '';
+      if (/^https?:\/\//i.test(rawPath)) return rawPath;
+      if (rawPath.startsWith('/doc/essay/')) {
+        return `${config.baseURL}${encodeURI(rawPath)}`;
+      }
+      const filename = rawPath.split('/').pop();
+      if (!filename) return '';
+      return `${config.baseURL}/doc/essay/${encodeURIComponent(filename)}`;
+    },
+
+    async fetchPaperDetailForAction(paper) {
+      const detail = await getPaperDetail(paper.id);
+      if (!detail?.id) {
+        throw new Error('获取论文详情失败');
+      }
+      const mergedPaper = this.mergePaperDetail(paper, detail);
+      this.updatePaperInList(paper.id, mergedPaper);
+      this.savePapersToLocalStorage();
+      return mergedPaper;
+    },
+
+    hasReviewResponse(res) {
+      const payload = (res && typeof res.data === 'object' && res.data) ? res.data : res;
+      return !!(
+        payload?.review_content ||
+        payload?.reviewContent ||
+        res?.code === 200 ||
+        payload?.code === 200 ||
+        (typeof res?.message === 'string' && res.message.includes('成功')) ||
+        (typeof payload?.message === 'string' && payload.message.includes('成功'))
+      );
+    },
+
+    getAnnotationListFromResponse(res) {
+      if (Array.isArray(res)) return res;
+      if (Array.isArray(res?.data)) return res.data;
+      return [];
+    },
+
+    async enrichPaperActionAvailability(paper) {
+      const enrichedPaper = { ...paper, hasReview: false, hasAnnotations: false };
+
+      const [reviewResult, annotationResult] = await Promise.allSettled([
+        getPaperReview(paper.id),
+        getAnnotationsByPaperId(paper.id)
+      ]);
+
+      if (reviewResult.status === 'fulfilled') {
+        enrichedPaper.hasReview = this.hasReviewResponse(reviewResult.value);
+      }
+
+      if (annotationResult.status === 'fulfilled') {
+        const annotationList = this.getAnnotationListFromResponse(annotationResult.value);
+        enrichedPaper.hasAnnotations = annotationList.length > 0;
+      }
+
+      return enrichedPaper;
+    },
+
+    async refreshPaperActionAvailability() {
+      if (!this.paperGroups.length) return;
+
+      const nextGroups = await Promise.all(
+        this.paperGroups.map(async (group) => ({
+          ...group,
+          papers: await Promise.all((group.papers || []).map(paper => this.enrichPaperActionAvailability(paper)))
+        }))
+      );
+
+      this.paperGroups = nextGroups;
+      this.savePapersToLocalStorage();
+
+      if (this.cache.api.paperWorkbenchData) {
+        this.cache.api.paperWorkbenchData = JSON.parse(JSON.stringify(this.paperGroups));
+        this.cache.apiTime.paperWorkbenchData = Date.now();
+      }
+    },
+
+    async pollForPaperId(existingPaperIds, maxAttempts = 10, interval = 500) {
+      const userInfo = uni.getStorageSync('userInfo') || {};
+      const numericUserId = parseInt(userInfo.sub || 0, 10);
+      for (let i = 0; i < maxAttempts; i++) {
+        try {
+          const listRes = await getPaperList({ owner_id: numericUserId });
+          const papers = Array.isArray(listRes)
+            ? listRes
+            : (Array.isArray(listRes?.data) ? listRes.data : []);
+          const newPapers = papers.filter(paper => !existingPaperIds.has(paper.id));
+          if (newPapers.length > 0) {
+            newPapers.sort((a, b) => Number(b.id) - Number(a.id));
+            return newPapers[0].id;
+          }
+          if (i < maxAttempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, interval));
+          }
+        } catch (err) {
+          if (i < maxAttempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, interval));
+          }
+        }
+      }
+      return null;
+    },
+
+    async getPaperWorkbenchData(forceRefresh = false) {
+      const cacheKey = 'paperWorkbenchData';
+      const now = Date.now();
+      const cachedData = this.cache.api[cacheKey];
+      const cacheTime = this.cache.apiTime[cacheKey];
+      const userInfo = uni.getStorageSync('userInfo') || {};
+      const numericUserId = parseInt(userInfo.sub || 0, 10);
+
+      if (!forceRefresh && cachedData && (now - cacheTime < CONFIG.CACHE_TTL)) {
+        this.paperGroups = JSON.parse(JSON.stringify(cachedData));
+        this.updatePaperIdsFromGroups();
+        this.updateStats();
+        const studentUsername = userInfo.username || userInfo.owner_id || userInfo.student_id || '';
+        if (studentUsername) {
+          await this.fetchAndApplyTeacherUsername(studentUsername);
+        }
+        await this.refreshPaperActionAvailability();
+        this.paperCardLoading = false;
+        return;
+      }
+
+      if (!numericUserId) {
+        this.paperGroups = [];
+        this.paperIds = [];
+        this.updateStats();
+        this.paperCardLoading = false;
+        return;
+      }
+
+      if (!forceRefresh) {
+        const loadedFromStorage = this.loadPapersFromLocalStorage(numericUserId);
+        if (loadedFromStorage) {
+          this.paperCardLoading = false;
+        }
+      }
+
+      this.paperCardLoading = true;
+      try {
+        const res = await getPaperList({ owner_id: numericUserId });
+        let paperData = null;
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+          paperData = res.data;
+        } else if (Array.isArray(res)) {
+          paperData = res;
+        } else if (Array.isArray(res?.data)) {
+          paperData = res.data;
+        }
+
+        if (paperData && paperData.length > 0) {
+          const myPapers = paperData.filter(paper => !paper.owner_id || paper.owner_id === numericUserId);
+          const formattedPapers = this.formatPaperData(myPapers.length > 0 ? myPapers : paperData);
+          const detailedPapers = await Promise.all(
+            formattedPapers.map(async (paper) => {
+              try {
+                const detail = await getPaperDetail(paper.id);
+                return this.mergePaperDetail(paper, detail);
+              } catch (error) {
+                return paper;
+              }
+            })
+          );
+
+          this.paperGroups = this.transformPapersToGroups(detailedPapers);
+          this.updatePaperIdsFromGroups();
+          this.cache.api[cacheKey] = JSON.parse(JSON.stringify(this.paperGroups));
+          this.cache.apiTime[cacheKey] = Date.now();
+          this.updateStats();
+          this.clearCaches();
+          this.savePapersToLocalStorage();
+
+          const studentUsername = userInfo.username || userInfo.owner_id || userInfo.student_id || '';
+          if (studentUsername) {
+            await this.fetchAndApplyTeacherUsername(studentUsername);
+            this.cache.api[cacheKey] = JSON.parse(JSON.stringify(this.paperGroups));
+            this.cache.apiTime[cacheKey] = Date.now();
+            this.savePapersToLocalStorage();
+          }
+          await this.refreshPaperActionAvailability();
+        } else {
+          this.paperGroups = [];
+          this.paperIds = [];
+          this.updateStats();
+          this.savePapersToLocalStorage();
+        }
+      } catch (err) {
+        console.error('获取论文卡片数据失败:', err);
+        if (!this.loadPapersFromLocalStorage(numericUserId)) {
+          this.paperGroups = [];
+          this.paperIds = [];
+          this.updateStats();
+        }
+      } finally {
+        this.paperCardLoading = false;
+      }
+    },
+
+    async fetchAllPaperStatus(forceRefresh = false) {
+      const now = Date.now();
+      if (!forceRefresh && this._lastStatusRefresh && (now - this._lastStatusRefresh < 5000)) {
+        uni.showToast({ title: '刷新太频繁，请稍后再试', icon: 'none' });
+        return;
+      }
+      this._lastStatusRefresh = now;
+
+      if (this.paperCards.length === 0) {
+        uni.showToast({ title: '暂无论文', icon: 'none' });
+        return;
+      }
+
+      this.paperCardLoading = true;
+      try {
+        const results = await Promise.all(
+          this.paperCards.map(async (paper) => {
+            try {
+              const detail = await getPaperDetail(paper.id);
+              return { paper, detail };
+            } catch (error) {
+              return { paper, detail: null };
+            }
+          })
+        );
+
+        let updatedCount = 0;
+        results.forEach(({ paper, detail }) => {
+          if (!detail) return;
+          const mergedPaper = this.mergePaperDetail(paper, detail);
+          const changed =
+            mergedPaper.status !== paper.status ||
+            mergedPaper.updateTime !== paper.updateTime ||
+            JSON.stringify(mergedPaper.statusHistory || []) !== JSON.stringify(paper.statusHistory || []);
+          this.updatePaperInList(paper.id, mergedPaper);
+          if (changed) updatedCount++;
+        });
+
+        this.updateStats();
+        this.savePapersToLocalStorage();
+        this.cache.api.paperWorkbenchData = JSON.parse(JSON.stringify(this.paperGroups));
+        this.cache.apiTime.paperWorkbenchData = Date.now();
+        await this.refreshPaperActionAvailability();
+        uni.showToast({
+          title: updatedCount > 0 ? `已更新${updatedCount}篇论文状态` : '状态已是最新',
+          icon: 'success'
+        });
+      } catch (error) {
+        console.error('刷新论文状态失败:', error);
+        uni.showToast({ title: '刷新论文状态失败', icon: 'none' });
+      } finally {
+        this.paperCardLoading = false;
+      }
+    },
+
+    canUpdatePaper(status) {
+      return mapBackendStatusToStudentDisplayBucket(status) === STUDENT_DISPLAY_BUCKETS.PENDING_REVISION;
+    },
+
+    getUpdateDisabledReason(status) {
+      const bucket = mapBackendStatusToStudentDisplayBucket(status);
+      const normalizedStatus = String(status || '').toLowerCase().trim();
+      if (bucket === STUDENT_DISPLAY_BUCKETS.FINALIZED) return '论文已定稿，无法再进行更新';
+      if (normalizedStatus === 'updated' || normalizedStatus === 'update_complete') return '论文已提交更新，请等待教师审阅';
+      if (['pending_review', 'reviewing', 'under_review', 'in_review', 'review_pending'].includes(normalizedStatus)) return '论文正在等待教师审阅，请耐心等待';
+      return '论文刚上传，请等待教师开始审阅';
+    },
+
+    canViewReview(paper) {
+      return !!paper?.hasReview;
+    },
+
+    canViewAnnotations(paper) {
+      return !!paper?.hasAnnotations;
+    },
+
+    displayStep(status) {
+      return studentDisplayStep(status);
+    },
+
+    handleUpdateClick(paper) {
+      if (!this.canUpdatePaper(paper.status)) {
+        uni.showToast({ title: this.getUpdateDisabledReason(paper.status), icon: 'none', duration: 2500 });
+        return;
+      }
+      this.openUpdateModal(paper);
+    },
+
+    openUpdateModal(paper) {
+      this.updatePaperItem = paper;
+      this.updateVersion = '';
+      this.updateSelectedFile = null;
+      this.showUpdateModal = true;
+    },
+
+    closeUpdateModal() {
+      this.showUpdateModal = false;
+      this.updatePaperItem = null;
+      this.updateVersion = '';
+      this.updateSelectedFile = null;
+    },
+
+    chooseUpdateFile() {
+      // #ifdef H5
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          this.updateSelectedFile = { name: file.name, size: file.size, path: file };
+        }
+      };
+      input.click();
+      // #endif
+
+      // #ifndef H5
+      uni.chooseMessageFile({
+        count: 1,
+        type: 'file',
+        extension: ['.docx'],
+        success: (res) => {
+          const file = res.tempFiles[0];
+          this.updateSelectedFile = { name: file.name, size: file.size, path: file.path };
+        },
+        fail: (err) => {
+          console.error('选择文件失败:', err);
+          uni.showToast({ title: '选择文件失败', icon: 'none' });
+        }
+      });
+      // #endif
+    },
+
+    async submitUpdatePaper() {
+      if (!this.updateSelectedFile || !this.updateVersion) {
+        uni.showToast({ title: '请选择文件并输入版本号', icon: 'none' });
+        return;
+      }
+
+      const versionRegex = /^v\d+\.\d+$/;
+      if (!versionRegex.test(this.updateVersion)) {
+        uni.showToast({ title: '版本号格式不正确（如 v2.0）', icon: 'none' });
+        return;
+      }
+
+      const currentVersion = parseFloat(this.updatePaperItem.version);
+      const newVersion = parseFloat(this.updateVersion.replace('v', ''));
+      if (newVersion <= currentVersion) {
+        uni.showToast({ title: `新版本必须大于当前版本 v${this.updatePaperItem.version}`, icon: 'none' });
+        return;
+      }
+
+      const paperId = this.updatePaperItem.id;
+      const filePath = this.updateSelectedFile.path;
+      const version = this.updateVersion;
+      const currentStatus = String(this.updatePaperItem.status || '').trim();
+
+      this.closeUpdateModal();
+      uni.showLoading({ title: '更新中...', mask: true });
+      try {
+        await updatePaperVersion(paperId, filePath, version);
+        if (['pending_update', 'update_pending'].includes(currentStatus.toLowerCase())) {
+          try {
+            await updatePaperStatus(paperId, { status: 'updated' });
+          } catch (statusErr) {
+            console.error('更新论文状态失败:', statusErr);
+          }
+        }
+        uni.hideLoading();
+        uni.showToast({ title: '更新成功', icon: 'success' });
+        await this.getPaperWorkbenchData(true);
+      } catch (err) {
+        uni.hideLoading();
+        console.error('提交论文更新失败:', err);
+        uni.showToast({ title: err.message || '更新失败', icon: 'none' });
+      }
+    },
+
+    async viewReview(paper) {
+      if (!this.canViewReview(paper)) {
+        uni.showToast({ title: '当前论文暂无审阅内容', icon: 'none', duration: 2000 });
+        return;
+      }
+      uni.showLoading({ title: '加载审阅内容...' });
+      try {
+        const res = await getPaperReview(paper.id);
+        uni.hideLoading();
+        const payload = (res && typeof res.data === 'object' && res.data) ? res.data : res;
+        const hasReviewContent = !!(payload?.review_content || payload?.reviewContent);
+        const requestSucceeded =
+          hasReviewContent ||
+          res?.code === 200 ||
+          payload?.code === 200 ||
+          (typeof res?.message === 'string' && res.message.includes('成功')) ||
+          (typeof payload?.message === 'string' && payload.message.includes('成功'));
+
+        if (requestSucceeded) {
+          this.currentReview = {
+            paperId: paper.id,
+            paperTitle: paper.title,
+            reviewContent: payload?.review_content || payload?.reviewContent || '暂无审阅内容',
+            reviewTime: payload?.review_time || payload?.created_at || payload?.reviewTime || '',
+            updatedTime: payload?.updated_time || payload?.updated_at || '',
+            teacherId: payload?.teacher_id || ''
+          };
+          this.showReviewModal = true;
+        } else {
+          uni.showToast({ title: payload?.message || res?.message || '暂无审阅内容', icon: 'none' });
+        }
+      } catch (err) {
+        uni.hideLoading();
+        uni.showToast({ title: err.message || '获取审阅内容失败', icon: 'none' });
+      }
+    },
+
+    closeReviewModal() {
+      this.showReviewModal = false;
+      this.currentReview = null;
+    },
+
+    async deletePaperAttachments(paperId) {
+      try {
+        const { getAttachmentList, deleteAttachment } = await import('../../api/student.js');
+        const res = await getAttachmentList(paperId);
+        let attachments = [];
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+          attachments = res.data;
+        } else if (Array.isArray(res)) {
+          attachments = res;
+        }
+        await Promise.all(
+          attachments.map(attachment => {
+            const attachmentId = attachment.id || attachment.material_id;
+            if (!attachmentId) return Promise.resolve();
+            return deleteAttachment(attachmentId).catch(error => {
+              console.error(`删除附件 ${attachmentId} 失败:`, error);
+              return null;
+            });
+          })
+        );
+      } catch (error) {
+        console.error(`获取论文 ${paperId} 附件列表失败:`, error);
+      }
+    },
+
+    showConfirm(title, content, callback) {
+      this.confirmModalTitle = title;
+      this.confirmModalContent = content;
+      this.confirmModalCallback = callback;
+      this.showConfirmModal = true;
+    },
+
+    handleConfirmModalConfirm() {
+      this.showConfirmModal = false;
+      if (this.confirmModalCallback) {
+        this.confirmModalCallback(true);
+      }
+      this.confirmModalCallback = null;
+    },
+
+    handleConfirmModalCancel() {
+      this.showConfirmModal = false;
+      if (this.confirmModalCallback) {
+        this.confirmModalCallback(false);
+      }
+      this.confirmModalCallback = null;
+    },
+
+    deletePaper(paperId, paperTitle) {
+      this.showConfirm('确认删除', `确定要删除论文《${paperTitle || '未命名论文'}》吗？此操作不可恢复。`, async (confirmed) => {
+        if (!confirmed) return;
+        try {
+          await this.deletePaperAttachments(paperId);
+          await deletePaper(paperId);
+          this.paperGroups = this.paperGroups
+            .map(group => ({
+              ...group,
+              papers: (group.papers || []).filter(paper => paper.id !== paperId)
+            }))
+            .filter(group => group.papers.length > 0);
+          this.updatePaperIdsFromGroups();
+          this.updateStats();
+          this.savePapersToLocalStorage();
+          uni.showToast({ title: '删除成功', icon: 'success' });
+        } catch (error) {
+          console.error('删除论文失败:', error);
+          uni.showToast({ title: error.message || '删除失败', icon: 'none' });
+        }
+      });
+    },
+
+    parseAnnotationContent(content) {
+      if (!content) return { selected: '', annotation: '', suggestion: '' };
+      const selectedMatch = content.match(/选中内容：([\s\S]*?)(?=批注：|$)/);
+      const annotationMatch = content.match(/批注：([\s\S]*?)(?=建议：|$)/);
+      const suggestionMatch = content.match(/建议：([\s\S]*)/);
+      return {
+        selected: selectedMatch ? selectedMatch[1].replace(/<[^>]+>/g, '').trim() : '',
+        annotation: annotationMatch ? annotationMatch[1].replace(/<[^>]+>/g, '').trim() : '',
+        suggestion: suggestionMatch ? suggestionMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+      };
+    },
+
+    formatTime(isoTime) {
+      if (!isoTime) return '';
+      const date = new Date(isoTime);
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    },
+
+    async viewAnnotations(paper) {
+      if (!this.canViewAnnotations(paper)) {
+        uni.showToast({ title: '当前论文暂无批注内容', icon: 'none', duration: 2000 });
+        return;
+      }
+      uni.showLoading({ title: '加载批注中...' });
+      try {
+        const res = await getAnnotationsByPaperId(paper.id);
+        uni.hideLoading();
+        let annotations = [];
+        if (res && Array.isArray(res)) {
+          annotations = res.map(item => ({
+            id: item.id,
+            source: item.author_id === 1 ? 'teacher' : 'AI',
+            content: this.parseAnnotationContent(item.content),
+            rawContent: item.content,
+            time: this.formatTime(item.created_at),
+            coordinates: item.coordinates,
+            paragraphId: item.paragraph_id,
+            authorId: item.author_id,
+            created_at: item.created_at,
+            processed: false
+          }));
+        }
+        if (annotations.length === 0) {
+          uni.showToast({ title: '暂无批注', icon: 'none' });
+          return;
+        }
+        const app = getApp();
+        app.globalData.previewAnnotations = annotations;
+        const url = `/pages/student/paperPreview?id=${paper.id}&title=${encodeURIComponent(paper.title || '论文预览')}&showAnnotations=true`;
+        uni.navigateTo({
+          url,
+          fail: (err) => {
+            console.error('跳转论文预览失败:', err);
+            uni.showToast({ title: '页面跳转失败', icon: 'none' });
+          }
+        });
+      } catch (error) {
+        uni.hideLoading();
+        console.error('获取批注失败:', error);
+        uni.showToast({ title: '获取批注失败', icon: 'none' });
+      }
+    },
+
+    async viewPaper(paper) {
+      if (!paper || !paper.id) {
+        uni.showToast({ title: '论文信息无效', icon: 'none' });
+        return;
+      }
+      let previewWindow = null;
+      // #ifdef H5
+      previewWindow = window.open('', '_blank');
+      if (previewWindow) {
+        previewWindow.document.write('<title>论文预览加载中</title><p style="padding:24px;font-family:Arial,sans-serif;color:#333;">正在加载论文预览...</p>');
+      }
+      // #endif
+
+      uni.showLoading({ title: '加载论文中...', mask: true });
+      let paperDetail = paper;
+      try {
+        paperDetail = await this.fetchPaperDetailForAction(paper);
+      } catch (error) {
+        // #ifdef H5
+        if (previewWindow) previewWindow.close();
+        // #endif
+        uni.hideLoading();
+        uni.showToast({ title: error.message || '获取论文详情失败', icon: 'none' });
+        return;
+      }
+
+      const hasRealFile = paperDetail.oss_key || paperDetail.pdf_oss_key;
+      if (!hasRealFile) {
+        // #ifdef H5
+        if (previewWindow) previewWindow.close();
+        // #endif
+        uni.hideLoading();
+        uni.showModal({
+          title: '提示',
+          content: '该论文暂无可预览文件，请稍后重试或下载源文件查看。',
+          showCancel: false,
+          confirmText: '知道了'
+        });
+        return;
+      }
+
+      if (!paperDetail.pdf_oss_key) {
+        // #ifdef H5
+        if (previewWindow) previewWindow.close();
+        // #endif
+        uni.hideLoading();
+        uni.showModal({
+          title: '提示',
+          content: '该论文暂时没有 PDF 版本，是否下载 Word 版本查看？',
+          confirmText: '下载',
+          cancelText: '取消',
+          success: (res) => {
+            if (res.confirm) this.downloadPaper(paperDetail);
+          }
+        });
+        return;
+      }
+
+      const fileUrl = this.getFileUrl(paperDetail.pdf_oss_key);
+      if (!fileUrl) {
+        // #ifdef H5
+        if (previewWindow) previewWindow.close();
+        // #endif
+        uni.hideLoading();
+        uni.showToast({ title: '论文预览链接无效', icon: 'none' });
+        return;
+      }
+
+      // #ifdef H5
+      if (previewWindow) {
+        previewWindow.location.href = fileUrl;
+      } else {
+        window.open(fileUrl, '_blank');
+      }
+      // #endif
+      // #ifndef H5
+      uni.downloadFile({
+        url: fileUrl,
+        success: (res) => {
+          if (res.statusCode === 200) {
+            uni.openDocument({ filePath: res.tempFilePath, showMenu: true });
+          }
+        }
+      });
+      // #endif
+      uni.hideLoading();
+    },
+
+    async downloadPaper(paper) {
+      if (!paper || !paper.id) {
+        uni.showToast({ title: '论文信息不完整', icon: 'none' });
+        return;
+      }
+      uni.showLoading({ title: '加载论文中...', mask: true });
+      let paperDetail = paper;
+      try {
+        paperDetail = await this.fetchPaperDetailForAction(paper);
+      } catch (error) {
+        uni.hideLoading();
+        uni.showToast({ title: error.message || '获取论文详情失败', icon: 'none' });
+        return;
+      }
+      uni.hideLoading();
+
+      if (!paperDetail.oss_key) {
+        this.showConfirm('提示', '该论文为演示数据，无法下载。请先上传真实论文文件。', () => {});
+        return;
+      }
+
+      const fileUrl = this.getFileUrl(paperDetail.oss_key);
+      if (!fileUrl) {
+        uni.showToast({ title: '论文下载链接无效', icon: 'none' });
+        return;
+      }
+
+      const downloadName = `${paperDetail.title || '论文'}.docx`;
+      this.showConfirm('下载确认', `即将下载论文《${paperDetail.title}》，是否继续？`, async (confirmed) => {
+        if (!confirmed) return;
+        uni.showLoading({ title: '下载中...', mask: true });
+        // #ifdef H5
+        try {
+          const response = await fetch(fileUrl);
+          if (!response.ok) throw new Error('下载失败');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = downloadName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          uni.showToast({ title: '下载完成', icon: 'success' });
+        } catch (error) {
+          console.error('下载论文失败:', error);
+          uni.showToast({ title: '下载失败', icon: 'none' });
+        } finally {
+          uni.hideLoading();
+        }
+        // #endif
+
+        // #ifndef H5
+        uni.downloadFile({
+          url: fileUrl,
+          success: (downloadRes) => {
+            if (downloadRes.statusCode === 200) {
+              uni.saveFile({
+                tempFilePath: downloadRes.tempFilePath,
+                success: () => uni.showToast({ title: '文件已保存', icon: 'success' }),
+                fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+              });
+            } else {
+              uni.showToast({ title: '下载失败', icon: 'none' });
+            }
+            uni.hideLoading();
+          },
+          fail: () => {
+            uni.showToast({ title: '下载失败', icon: 'none' });
+            uni.hideLoading();
+          }
+        });
+        // #endif
+      });
+    },
+
     getStatusText(status) {
       if (status == null || String(status).trim() === '') return '待审阅';
       return studentDisplayStatusLabel(status);
@@ -4833,4 +5859,844 @@ export default {
   min-height: 100vh;
 }
 
+</style>
+<style scoped>
+.paper-card-loading-container,
+.paper-card-empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 120rpx 40rpx;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 249, 250, 0.96) 100%);
+  border-radius: calc(var(--radius-lg) + 2px);
+  border: 1px dashed rgba(0, 91, 191, 0.16);
+  box-shadow: var(--shadow-sm);
+}
+
+.paper-card-loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  position: relative;
+  margin-bottom: 30rpx;
+}
+
+.paper-card-loading-spinner::before,
+.paper-card-loading-spinner::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+
+.paper-card-loading-spinner::before {
+  width: 100%;
+  height: 100%;
+  background: var(--primary);
+  animation: workbenchPaperPulseRing 1.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.paper-card-loading-spinner::after {
+  width: 70%;
+  height: 70%;
+  top: 15%;
+  left: 15%;
+  background: #fff;
+  animation: workbenchPaperPulseDot 1.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes workbenchPaperPulseRing {
+  0% { transform: scale(0.8); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(0.8); opacity: 1; }
+}
+
+@keyframes workbenchPaperPulseDot {
+  0% { transform: scale(0.6); }
+  50% { transform: scale(1); }
+  100% { transform: scale(0.6); }
+}
+
+.paper-card-loading-text {
+  font-size: 28rpx;
+  color: var(--on-surface-variant);
+}
+
+.paper-card-empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 30rpx;
+  font-family: 'Material Symbols Outlined', sans-serif;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+  opacity: 0.65;
+}
+
+.paper-card-empty-text {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--on-surface);
+  margin-bottom: 12rpx;
+}
+
+.paper-card-empty-subtext {
+  font-size: 26rpx;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.workbench-paper-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 20rpx;
+  position: relative;
+}
+
+.workbench-paper-list.single-card {
+  padding: 22rpx;
+  gap: 0;
+  justify-content: center;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+.paper-list-move {
+  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.paper-list-enter-active {
+  transition: all 0.4s ease-out;
+}
+
+.paper-list-leave-active {
+  transition: all 0.3s ease-in;
+  position: absolute;
+}
+
+.paper-list-enter {
+  opacity: 0;
+  transform: translateY(30rpx);
+}
+
+.paper-list-leave-to {
+  opacity: 0;
+  transform: translateY(-30rpx);
+}
+
+.workbench-paper-list .workbench-paper-card {
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+  border-radius: calc(var(--radius-lg) + 2px);
+  padding: 32rpx;
+  box-shadow: 0 12px 28px rgba(25, 28, 29, 0.06);
+  border: 1rpx solid rgba(0, 91, 191, 0.08);
+  transition:
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease;
+  position: relative;
+  box-sizing: border-box;
+  will-change: transform, box-shadow;
+  overflow: hidden;
+}
+
+.workbench-paper-list.single-card .workbench-paper-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 50rpx 46rpx;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.workbench-paper-list .workbench-paper-card:hover {
+  transform: translateY(-4rpx);
+  box-shadow: 0 16px 32px rgba(25, 28, 29, 0.1);
+  border-color: rgba(0, 91, 191, 0.18);
+}
+
+.workbench-paper-list .paper-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 22rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1px solid rgba(25, 28, 29, 0.07);
+}
+
+.workbench-paper-list.single-card .paper-header {
+  margin-bottom: 30rpx;
+  padding-bottom: 24rpx;
+}
+
+.workbench-paper-list .paper-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  align-self: stretch;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.workbench-paper-list .paper-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.workbench-paper-list .paper-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--on-surface);
+  display: block;
+  margin-bottom: 10rpx;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+.workbench-paper-list.single-card .paper-title {
+  font-size: 46rpx;
+  margin-bottom: 18rpx;
+  line-height: 1.36;
+}
+
+.workbench-paper-list .paper-preview-hint {
+  font-size: 22rpx;
+  font-weight: 400;
+  color: var(--primary-container);
+  margin-left: 10rpx;
+  opacity: 0.88;
+}
+
+.workbench-paper-list.single-card .paper-preview-hint {
+  font-size: 30rpx;
+}
+
+.workbench-paper-list .paper-meta {
+  font-size: 24rpx;
+  color: var(--on-surface-variant);
+  display: block;
+  line-height: 1.55;
+}
+
+.workbench-paper-list.single-card .paper-meta {
+  font-size: 34rpx;
+  line-height: 1.75;
+}
+
+.workbench-paper-list.single-card .refresh-status-btn {
+  height: 66rpx;
+  padding: 0 36rpx;
+}
+
+.workbench-paper-list.single-card .refresh-text {
+  font-size: 30rpx;
+}
+
+.workbench-paper-list .refresh-status-btn {
+  height: 52rpx;
+  padding: 0 22rpx;
+  border-radius: var(--radius-full);
+  background: rgba(0, 91, 191, 0.08);
+  border: 1px solid rgba(0, 91, 191, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: none;
+}
+
+.workbench-paper-list .refresh-status-btn:hover {
+  transform: translateY(-2rpx);
+  background: var(--primary);
+  box-shadow: 0 10rpx 18rpx rgba(0, 91, 191, 0.22);
+}
+
+.workbench-paper-list .refresh-text {
+  font-size: 22rpx;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.workbench-paper-list .refresh-status-btn:hover .refresh-text {
+  color: #fff;
+}
+
+.workbench-paper-list .paper-content {
+  margin-bottom: 22rpx;
+}
+
+.workbench-paper-list .paper-content-wrapper {
+  width: 100%;
+}
+
+.workbench-paper-list.single-card .paper-content-wrapper {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.workbench-paper-list.single-card .paper-content {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto minmax(250rpx, 0.95fr) minmax(240rpx, 0.9fr);
+  gap: 28rpx;
+  align-content: stretch;
+  margin-bottom: 34rpx;
+  min-height: 0;
+}
+
+.workbench-paper-list .paper-detail {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.workbench-paper-list.single-card .paper-detail {
+  margin-bottom: 0;
+}
+
+.workbench-paper-list .detail-label,
+.workbench-paper-list .detail-value {
+  font-size: 26rpx;
+}
+
+.workbench-paper-list.single-card .detail-label,
+.workbench-paper-list.single-card .detail-value {
+  font-size: 34rpx;
+}
+
+.workbench-paper-list .detail-label {
+  color: var(--on-surface-variant);
+  margin-right: 10rpx;
+}
+
+.workbench-paper-list .detail-value {
+  color: var(--on-surface);
+}
+
+.workbench-paper-list .progress-section {
+  margin-bottom: 22rpx;
+  padding: 18rpx 20rpx;
+  background: linear-gradient(180deg, rgba(214, 227, 255, 0.26) 0%, rgba(255, 255, 255, 0.82) 100%);
+  border-radius: calc(var(--radius-md) + 2px);
+  border: 1px solid rgba(0, 91, 191, 0.08);
+}
+
+.workbench-paper-list.single-card .progress-section {
+  margin-bottom: 0;
+  padding: 24rpx 28rpx;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.workbench-paper-list .progress-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workbench-paper-list.single-card .progress-track {
+  width: 100%;
+  align-items: flex-start;
+}
+
+.workbench-paper-list .progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+.workbench-paper-list .step-circle {
+  width: 50rpx;
+  height: 50rpx;
+  border-radius: 50%;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 700;
+  margin-bottom: 10rpx;
+  border: 2rpx solid var(--surface-container-high);
+}
+
+.workbench-paper-list.single-card .step-circle {
+  width: 88rpx;
+  height: 88rpx;
+  font-size: 36rpx;
+  margin-bottom: 16rpx;
+}
+
+.workbench-paper-list .progress-step.active .step-circle,
+.workbench-paper-list .progress-step.completed .step-circle {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-primary);
+}
+
+.workbench-paper-list .step-text {
+  font-size: 20rpx;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.workbench-paper-list.single-card .step-text {
+  font-size: 32rpx;
+  line-height: 1.28;
+}
+
+.workbench-paper-list .progress-step.active .step-text,
+.workbench-paper-list .progress-step.completed .step-text {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.workbench-paper-list .progress-line {
+  flex: 1;
+  height: 3rpx;
+  background-color: var(--surface-container-high);
+  margin: 0 10rpx;
+  margin-bottom: 35rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+.workbench-paper-list.single-card .progress-line {
+  height: 8rpx;
+  margin: 40rpx 26rpx 0;
+  border-radius: 999px;
+}
+
+.workbench-paper-list .progress-line.active {
+  background-color: var(--primary);
+}
+
+.workbench-paper-list .line-flow {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  animation: workbenchLineFlow 2s linear infinite;
+}
+
+@keyframes workbenchLineFlow {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.workbench-paper-list .notice-section {
+  background: linear-gradient(180deg, rgba(247, 251, 255, 1) 0%, rgba(241, 247, 255, 1) 100%);
+  border-radius: 16rpx;
+  padding: 18rpx 20rpx;
+  border: 1px solid rgba(0, 91, 191, 0.1);
+}
+
+.workbench-paper-list.single-card .notice-section {
+  margin-top: 0;
+  padding: 26rpx 28rpx;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+.workbench-paper-list .notice-header {
+  margin-bottom: 15rpx;
+}
+
+.workbench-paper-list .notice-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.workbench-paper-list.single-card .notice-title {
+  font-size: 34rpx;
+}
+
+.workbench-paper-list .notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.workbench-paper-list.single-card .notice-list {
+  flex: 1;
+  justify-content: center;
+}
+
+.workbench-paper-list .notice-item {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 12rpx;
+  padding: 14rpx 16rpx;
+  border-left: 4rpx solid var(--primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.workbench-paper-list.single-card .notice-item {
+  min-height: 96rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.workbench-paper-list .notice-time {
+  font-size: 22rpx;
+  color: #999;
+  margin-bottom: 8rpx;
+}
+
+.workbench-paper-list.single-card .notice-time {
+  font-size: 30rpx;
+}
+
+.workbench-paper-list .notice-content {
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.5;
+}
+
+.workbench-paper-list.single-card .notice-content {
+  font-size: 34rpx;
+  line-height: 1.62;
+}
+
+.workbench-paper-list .paper-actions {
+  display: flex;
+  gap: 14rpx;
+  padding: 18rpx;
+  margin: 0 -8rpx -8rpx;
+  border-top: 1px solid rgba(25, 28, 29, 0.06);
+  background: linear-gradient(180deg, rgba(250, 251, 252, 0.65) 0%, rgba(243, 244, 245, 0.88) 100%);
+  border-radius: 18rpx;
+}
+
+.workbench-paper-list.single-card .paper-actions {
+  gap: 18rpx;
+  padding: 28rpx 26rpx;
+  margin: 0;
+  min-height: 136rpx;
+  align-items: stretch;
+}
+
+.workbench-paper-list .action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 12rpx 16rpx;
+  border-radius: var(--radius-sm);
+  font-size: 23rpx;
+  font-weight: 500;
+  border: none;
+  flex: 1;
+  background-color: rgba(0, 91, 191, 0.06);
+  color: var(--primary);
+  border: 1px solid rgba(0, 91, 191, 0.08);
+  min-width: 0;
+}
+
+.workbench-paper-list.single-card .action-btn {
+  padding: 20rpx 22rpx;
+  font-size: 28rpx;
+  min-height: 92rpx;
+}
+
+.workbench-paper-list .action-btn .btn-icon {
+  font-size: 26rpx;
+  font-family: 'Material Symbols Outlined', sans-serif;
+}
+
+.workbench-paper-list.single-card .action-btn .btn-icon {
+  font-size: 32rpx;
+}
+
+.workbench-paper-list .action-btn:hover {
+  background-color: var(--primary);
+  color: #fff;
+  transform: translateY(-1rpx);
+  box-shadow: 0 10rpx 18rpx rgba(0, 91, 191, 0.18);
+}
+
+.workbench-paper-list .action-btn.delete-btn {
+  background-color: #ffebee;
+  color: #e53e3e;
+  border-color: #ffcdd2;
+}
+
+.workbench-paper-list .action-btn.delete-btn:hover {
+  background-color: #ef5350;
+  color: #fff;
+  border-color: #ef5350;
+}
+
+.workbench-paper-list .action-btn.review-btn {
+  background-color: #f6ffed;
+  color: #52c41a;
+  border-color: #b7eb8f;
+}
+
+.workbench-paper-list .action-btn.review-btn:hover {
+  background-color: #52c41a;
+  color: #fff;
+  border-color: #52c41a;
+}
+
+.workbench-paper-list .action-btn.update-btn.disabled,
+.workbench-paper-list .action-btn.review-btn.disabled,
+.workbench-paper-list .action-btn.annotation-btn.disabled {
+  background-color: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  border-color: var(--surface-container-high);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.workbench-paper-list .action-btn.update-btn.disabled:hover,
+.workbench-paper-list .action-btn.review-btn.disabled:hover,
+.workbench-paper-list .action-btn.annotation-btn.disabled:hover {
+  background-color: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  border-color: var(--surface-container-high);
+  transform: none;
+  box-shadow: none;
+}
+
+.paper-card-review-modal,
+.paper-card-update-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.paper-card-review-content,
+.paper-card-update-content {
+  background: #fff;
+  border-radius: 12px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.paper-card-review-content {
+  width: 90%;
+  max-width: 500px;
+}
+
+.paper-card-update-content {
+  width: 90%;
+  max-width: 400px;
+}
+
+.paper-card-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.paper-card-modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #005bbf;
+}
+
+.paper-card-modal-close {
+  font-size: 20px;
+  color: #5f6368;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.paper-card-modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.paper-card-review-info,
+.paper-card-update-info {
+  background: #f3f4f5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.paper-card-review-title,
+.paper-card-update-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #191c1d;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.paper-card-review-meta,
+.paper-card-update-version {
+  font-size: 0.875rem;
+  color: #5f6368;
+}
+
+.paper-card-review-section {
+  margin-bottom: 16px;
+}
+
+.paper-card-review-section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #005bbf;
+  margin-bottom: 12px;
+  padding-left: 12px;
+  border-left: 3px solid #005bbf;
+}
+
+.paper-card-review-content-text {
+  font-size: 0.875rem;
+  color: #191c1d;
+  line-height: 1.8;
+  padding: 16px;
+  background: #f3f4f5;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.paper-card-review-time {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.paper-card-review-time-label {
+  font-size: 0.875rem;
+  color: #5f6368;
+  margin-right: 8px;
+}
+
+.paper-card-review-time-value {
+  font-size: 0.875rem;
+  color: #191c1d;
+  font-weight: 500;
+}
+
+.paper-card-update-tips,
+.paper-card-file-info {
+  background: #e8f4fd;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.paper-card-update-tips text,
+.paper-card-version-hint,
+.paper-card-file-size {
+  display: block;
+  font-size: 0.875rem;
+  color: #1a3c6e;
+  line-height: 1.6;
+}
+
+.paper-card-version-section {
+  margin-bottom: 16px;
+}
+
+.paper-card-input-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #191c1d;
+  margin-bottom: 8px;
+}
+
+.paper-card-version-input {
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 0.875rem;
+  color: #191c1d;
+  background: #f3f4f5;
+  box-sizing: border-box;
+}
+
+.paper-card-file-btn,
+.paper-card-submit-btn {
+  width: 100%;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.paper-card-file-btn {
+  background: #f3f4f5;
+  border: 2rpx dashed #e5e7eb;
+  color: #191c1d;
+  margin-bottom: 12px;
+}
+
+.paper-card-submit-btn {
+  background: #005bbf;
+  color: #fff;
+  font-weight: 500;
+}
+
+.paper-card-submit-btn:disabled {
+  background: #e5e7eb;
+  color: #5f6368;
+}
+
+.paper-card-file-name {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1a3c6e;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.paper-card-review-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+}
 </style>

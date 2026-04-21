@@ -67,14 +67,10 @@
             <text class="material-symbols-outlined">dashboard</text>
             <text class="nav-label">工作台</text>
           </view>
-          <view class="nav-item" @click="goToPaperList">
-            <text class="material-symbols-outlined">description</text>
-            <text class="nav-label">论文列表</text>
-          </view>
-          <view class="nav-item" @click="goToAttachmentList">
-            <text class="material-symbols-outlined">folder_open</text>
-            <text class="nav-label">附件列表</text>
-          </view>
+        <view class="nav-item" @click="goToAttachmentList">
+          <text class="material-symbols-outlined">folder_open</text>
+          <text class="nav-label">附件列表</text>
+        </view>
         </view>
 
         <view class="sidebar-divider"></view>
@@ -480,9 +476,6 @@ export default {
      */
     goToWorkbench() {
       uni.navigateTo({ url: '/pages/student/workbench' });
-    },
-    goToPaperList() {
-      uni.navigateTo({ url: '/pages/student/paperList' });
     },
     goToAttachmentList() {
       uni.navigateTo({ url: '/pages/student/attachmentList' });

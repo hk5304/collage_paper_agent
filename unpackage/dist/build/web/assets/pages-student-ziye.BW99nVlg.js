@@ -1,0 +1,1 @@
+import{d as a,w as e,i as r,o as s,f as t}from"./index-BAHTXfkR.js";import{_ as o}from"./_plugin-vue_export-helper.BCo6x5W8.js";const n=o({data:()=>({})},[["render",function(o,n,f,u,d,i){const l=r;return s(),a(l,null,{default:e((()=>[t(" 页面内容 ")])),_:1})}]]);export{n as default};

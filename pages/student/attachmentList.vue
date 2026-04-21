@@ -91,10 +91,6 @@
               <view class="menu-icon material-symbols-outlined">home</view>
               <text class="menu-text">返回工作台</text>
             </view>
-            <view class="menu-item" @click="goToPaperList">
-              <view class="menu-icon material-symbols-outlined">description</view>
-              <text class="menu-text">论文列表</text>
-            </view>
           </view>
         </view>
       </view>
@@ -519,13 +515,6 @@ export default {
       this._navigateTimer = setTimeout(() => {
         this._navigateTimer = null;
         uni.navigateTo({ url: '/pages/student/workbench' });
-      }, 300);
-    },
-    goToPaperList() {
-      this.isPageFadeOut = true;
-      this._navigateTimer = setTimeout(() => {
-        this._navigateTimer = null;
-        uni.navigateTo({ url: '/pages/student/paperList' });
       }, 300);
     },
     getSidebarAttachmentName(name) {
