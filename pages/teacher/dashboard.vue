@@ -957,7 +957,7 @@
               </view>
               <view class="batch-option-content">
                 <text class="batch-option-title">批量下载「{{ currentFilterLabel }}」论文及其附件</text>
-                <text class="batch-option-desc">同时下载论文和附件，分两个ZIP包进行下载</text>
+                <text class="batch-option-desc">同时下载论文和附件，自动打包为一个ZIP压缩包</text>
               </view>
             </view>
           </view>
@@ -1929,13 +1929,12 @@
 				if (!this.selectedClass) return;
 				
 				try {
-					const teacherId = uni.getStorageSync('teacher_id') || uni.getStorageSync('userInfo')?.id;
 					const groupId = this.selectedClass.id;
 					
-					console.log('加载群组论文列表:', { teacherId, groupId });
+					console.log('加载群组论文列表:', { groupId });
 					
 					const { getGroupPapers } = await import('@/api/teacher.js');
-					const res = await getGroupPapers(teacherId, groupId);
+					const res = await getGroupPapers(groupId);
 					
 					console.log('群组论文列表返回:', res);
 					console.log('res结构:', Object.keys(res || {}));
@@ -2096,7 +2095,7 @@
 					const { getGroupPapers } = await import('@/api/teacher.js');
 					await Promise.all(this.classList.map(async (cls) => {
 						try {
-							const res = await getGroupPapers(teacherId, cls.id);
+						const res = await getGroupPapers(cls.id);
 							const papers = res?.papers || res?.data?.papers || [];
 							papers.forEach(paper => {
 								const studentId = paper.student_id || paper.author_id || paper.owner_id;
@@ -5758,39 +5757,22 @@
 					
 					// ① 下载论文
 					const paperIds = papers.map(p => p.paperId || p.id || p.paper_id).filter(Boolean).join(',');
-					const paperRes = await batchDownloadPapers(paperIds, { current_user: JSON.stringify(currentUser) });
-					if (paperRes && paperRes instanceof ArrayBuffer) {
-						const blob = new Blob([paperRes], { type: 'application/zip' });
-						triggerDownload(blob, `批量下载_${filterLabel}论文_${timestamp}.zip`);
-					} else {
-						uni.showToast({ title: '论文下载失败', icon: 'none' });
-						return;
+					
+					// 论文+附件模式：通过 include_attachments=true 调用统一接口，返回一个ZIP包
+					const downloadParams = { current_user: JSON.stringify(currentUser) };
+					if (type === 'papers_and_attachments') {
+						downloadParams.include_attachments = true;
 					}
 					
-					// ② 如果选择论文+附件，再下载附件
-					if (type === 'papers_and_attachments') {
-						try {
-							const token = uni.getStorageSync('token');
-							const { config } = await import('@/api/config.js');
-							const attachUrl = `${config.baseURL}/api/v1/materials/download?mode=all&current_user=${encodeURIComponent(JSON.stringify(currentUser))}`;
-							const attachResp = await fetch(attachUrl, {
-								method: 'POST',
-								headers: { 'Authorization': token ? `Bearer ${token}` : '' }
-							});
-							if (attachResp.ok) {
-								const attachBuffer = await attachResp.arrayBuffer();
-								const attachBlob = new Blob([attachBuffer], { type: 'application/zip' });
-								triggerDownload(attachBlob, `批量下载_${filterLabel}附件_${timestamp}.zip`);
-								uni.showToast({ title: `已开始下载 ${papers.length} 篇论文及附件`, icon: 'success' });
-							} else {
-								uni.showToast({ title: '论文已下载，附件下载失败', icon: 'none' });
-							}
-						} catch (attachErr) {
-							console.error('附件下载失败:', attachErr);
-							uni.showToast({ title: '论文已下载，附件下载失败', icon: 'none' });
-						}
+					const paperRes = await batchDownloadPapers(paperIds, downloadParams);
+					if (paperRes && paperRes instanceof ArrayBuffer) {
+						const blob = new Blob([paperRes], { type: 'application/zip' });
+						const fileSuffix = type === 'papers_and_attachments' ? '论文及附件' : '论文';
+						triggerDownload(blob, `批量下载_${filterLabel}${fileSuffix}_${timestamp}.zip`);
+						uni.showToast({ title: `已开始下载 ${papers.length} 篇${fileSuffix}`, icon: 'success' });
 					} else {
-						uni.showToast({ title: `已开始下载 ${papers.length} 篇论文`, icon: 'success' });
+						uni.showToast({ title: '下载失败', icon: 'none' });
+						return;
 					}
 				} catch (err) {
 					console.error('批量下载失败:', err);
@@ -6166,8 +6148,8 @@
 					const userInfo = uni.getStorageSync('userInfo');
 					const teacherId = Number(userInfo?.id || 1);
 					
-					// 构造参数，确保 teacher_id 和 current_user.sub 一致
-					const params = { teacher_id: teacherId };
+					// 构造参数，确保 teacher_id、group_id 和 current_user.sub 一致
+					const params = { teacher_id: teacherId, group_id: classId };
 					if (userInfo) {
 						params.current_user = JSON.stringify({
 							sub: teacherId,
@@ -6178,7 +6160,6 @@
 					
 					// 优先从接口加载
 					const res = await getDeadlineSetting(params);
-					console.log('加载DDL返回结果:', res);
 									
 					// 兼容多种返回格式：直接数组 / {code:200, data:[]} / {code:200, data:{}}
 					let ddlData = null;

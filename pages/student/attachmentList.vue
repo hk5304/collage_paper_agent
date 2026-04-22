@@ -1331,6 +1331,40 @@ export default {
 }
 
 /* 窗口缩放时的过渡动画 */
+@media screen and (max-height: 920px) {
+  .main-layout {
+    gap: 16rpx;
+    padding-right: 16rpx;
+  }
+
+  .sidebar {
+    padding: 18rpx 16rpx;
+  }
+
+  .sidebar-title {
+    margin-bottom: 20rpx;
+    padding-bottom: 16rpx;
+  }
+
+  .stats-panel,
+  .sidebar-menu {
+    gap: 16rpx;
+  }
+
+  .stat-item,
+  .menu-item {
+    padding: 22rpx 16rpx;
+  }
+
+  .content-area {
+    padding: 12px 20rpx 20rpx;
+  }
+
+  .attachment-card {
+    padding: 28rpx;
+  }
+}
+
 .sidebar,
 .main-layout,
 .attachment-card,
@@ -1496,6 +1530,7 @@ export default {
   background: var(--surface);
   font-family: var(--font-body);
   -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
   transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
 
@@ -1515,7 +1550,8 @@ export default {
 /* 主布局 */
 .main-layout {
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
+  height: auto;
   background: var(--surface);
   width: 100%;
   max-width: none;
@@ -1523,7 +1559,7 @@ export default {
   gap: 24rpx;
   padding: 64px 24rpx 0 280px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* 左侧边栏 - 与工作台保持一致 256px */
@@ -1800,6 +1836,7 @@ export default {
   padding: 16px 30rpx 30rpx;
   background: var(--surface);
   overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
   min-height: 0;
 }

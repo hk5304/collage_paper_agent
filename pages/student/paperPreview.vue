@@ -1,13 +1,21 @@
 <template>
-  <view class="paper-preview-page" :class="{ 'dark-mode': isDarkMode }">
+  <view class="paper-preview-page" :class="{ 'dark-mode': isDarkMode, 'has-annotation-panel': annotations.length > 0 }">
     <!-- 顶部标题栏 -->
     <view class="top-header">
       <view class="header-left">
         <view class="back-btn" @tap.stop="goBack" hover-class="back-btn-hover">
           <text class="back-icon material-symbols-outlined">arrow_back</text>
         </view>
+        <view class="header-brand">
+          <view class="header-brand-icon">
+            <text class="material-symbols-outlined">article</text>
+          </view>
+          <view class="header-brand-text">
+            <text class="header-brand-title">{{ pageTitle }}</text>
+            <text class="header-brand-subtitle">论文管理系统</text>
+          </view>
+        </view>
       </view>
-      <text class="header-title">{{ pageTitle }}</text>
       <view class="header-right"></view>
     </view>
 
@@ -32,20 +40,22 @@
       </scroll-view>
     </view>
 
-    <!-- 批注列表面板（有批注时展示，可折叠） -->
-    <view v-if="annotations.length > 0" class="annotation-list-panel" :class="{ collapsed: !showAnnotationList }">
+    <!-- 批注列表面板（有批注时常驻显示） -->
+    <view v-if="annotations.length > 0" class="annotation-list-panel">
       <view class="annotation-list-header">
-        <text class="annotation-list-title">
-          {{ showAnnotationList ? '批注列表' : '批注' }} ({{ annotations.length }})
-        </text>
-        <text class="annotation-list-toggle-btn" @click="showAnnotationList = !showAnnotationList">
-          {{ showAnnotationList ? '收起' : '展开' }}
-        </text>
+        <text class="annotation-list-title">批注列表 ({{ annotations.length }})</text>
       </view>
-      <scroll-view scroll-y class="annotation-list-body" v-if="showAnnotationList" :scroll-top="0">
+      <scroll-view
+        scroll-y
+        class="annotation-list-body"
+        :scroll-top="0"
+        :show-scrollbar="true"
+        :enable-back-to-top="true"
+      >
         <view
           v-for="(item, index) in annotations"
           :key="item.id || index"
+          :id="'annotation-item-' + index"
           class="annotation-list-item"
           :class="{ 
             active: selectedAnnotation && selectedAnnotation.id === item.id,
@@ -61,60 +71,27 @@
             <text class="annotation-list-item-author">{{ item.author }}</text>
             <text class="annotation-list-item-time">{{ formatTime(item.created_at) }}</text>
           </view>
-          <text class="annotation-list-item-preview">
-            {{ truncate(item.selectedText || item.content, 60) }}
-          </text>
+          <view class="annotation-list-item-body">
+            <view v-if="item.selectedText" class="annotation-list-section">
+              <text class="annotation-list-section-label">选中原文</text>
+              <text class="annotation-list-section-box selected">{{ item.selectedText }}</text>
+            </view>
+            <view v-if="item.content" class="annotation-list-section">
+              <text class="annotation-list-section-label">批注</text>
+              <view class="annotation-list-section-box comment">
+                <rich-text :nodes="item.content" class="annotation-list-rich-text"></rich-text>
+              </view>
+            </view>
+            <view v-if="item.suggestion" class="annotation-list-section">
+              <text class="annotation-list-section-label">建议</text>
+              <text class="annotation-list-section-box suggestion">{{ item.suggestion }}</text>
+            </view>
+          </view>
         </view>
         <view v-if="annotations.length === 0" class="annotation-list-empty">
           <text>暂无批注</text>
         </view>
       </scroll-view>
-    </view>
-
-    <!-- 批注详情弹窗 -->
-    <view v-if="showDetailModal" class="annotation-modal-backdrop" @click.self="closeDetailModal">
-      <view class="annotation-modal">
-        <view class="modal-header">
-          <view class="modal-header-left"></view>
-          <text class="modal-title">论文批注</text>
-          <view class="modal-header-right">
-            <text class="modal-close material-symbols-outlined" @click="closeDetailModal">close</text>
-          </view>
-        </view>
-        <scroll-view scroll-y class="modal-body">
-          <!-- 元信息 -->
-          <view class="annotation-meta">
-            <view class="annotation-author-section">
-              <text class="annotation-source-badge" :class="currentAnnotation.source">
-                {{ currentAnnotation.source === 'ai' ? 'AI' : '教师' }}
-              </text>
-              <text class="annotation-author">{{ currentAnnotation.author || '教师' }}</text>
-            </view>
-            <text class="annotation-time">{{ formatTime(currentAnnotation.created_at) }}</text>
-          </view>
-          <!-- 选中内容 -->
-          <view class="annotation-section" v-if="currentAnnotation.selectedText">
-            <text class="section-label">选中内容</text>
-            <view class="section-box selected-box">
-              <text class="section-text">{{ currentAnnotation.selectedText }}</text>
-            </view>
-          </view>
-          <!-- 批注内容 -->
-          <view class="annotation-section" v-if="currentAnnotation.content">
-            <text class="section-label">批注</text>
-            <view class="section-box comment-box">
-              <rich-text :nodes="currentAnnotation.content" class="section-text"></rich-text>
-            </view>
-          </view>
-          <!-- 建议 -->
-          <view class="annotation-section" v-if="currentAnnotation.suggestion">
-            <text class="section-label">建议</text>
-            <view class="section-box suggestion-box">
-              <text class="section-text">{{ currentAnnotation.suggestion }}</text>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
     </view>
   </view>
 </template>
@@ -137,9 +114,6 @@ export default {
       docxModule: null,
       annotations: [],
       selectedAnnotation: null,
-      showDetailModal: false,
-      showAnnotationList: false,
-      currentAnnotation: {},
       pageTitle: '论文预览'
     };
   },
@@ -471,7 +445,7 @@ export default {
         const cls = annotation.source === 'ai' ? 'highlight-ai' : 'highlight-teacher';
         const clickHandler = e => {
           e.stopPropagation();
-          this.showAnnotationDetail(annotation);
+          this.selectAnnotation(annotation, index);
         };
         
         // 使用实际匹配的文本进行高亮
@@ -628,7 +602,7 @@ export default {
       const cls = annotation.source === 'ai' ? 'highlight-ai' : 'highlight-teacher';
       const clickHandler = e => {
         e.stopPropagation();
-        this.showAnnotationDetail(annotation);
+        this.selectAnnotation(annotation, index);
       };
       
       element.classList.add('annotation-accent', cls);
@@ -650,7 +624,7 @@ export default {
       const cls = annotation.source === 'ai' ? 'highlight-ai' : 'highlight-teacher';
       const clickHandler = e => {
         e.stopPropagation();
-        this.showAnnotationDetail(annotation);
+        this.selectAnnotation(annotation, index);
       };
 
       // 尝试精确文字高亮（下划线形式）
@@ -830,21 +804,20 @@ export default {
 
     // ─── 交互操作 ───────────────────────────────────────────
 
-    showAnnotationDetail(annotation) {
-      this.currentAnnotation = annotation;
+    selectAnnotation(annotation, index = null, syncList = true) {
       this.selectedAnnotation = annotation;
-      this.showDetailModal = true;
-    },
-
-    closeDetailModal() {
-      this.showDetailModal = false;
-      this.selectedAnnotation = null;
-      this.currentAnnotation = {};
+      if (!syncList || index == null) return;
+      this.$nextTick(() => {
+        if (typeof document === 'undefined') return;
+        const itemEl = document.getElementById(`annotation-item-${index}`);
+        if (itemEl && typeof itemEl.scrollIntoView === 'function') {
+          itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
     },
 
     scrollToAnnotation(annotation, index) {
-      this.selectedAnnotation = annotation;
-      this.showAnnotationList = false;
+      this.selectAnnotation(annotation, index, false);
 
       const container = this.$refs.docxContainer;
       if (!container) return;
@@ -870,8 +843,6 @@ export default {
         marker.style.outlineOffset = originalOutlineOffset;
       }, 1500);
 
-      // 延迟展示详情弹窗
-      setTimeout(() => { this.showAnnotationDetail(annotation); }, 500);
     },
 
     // ─── 工具方法 ───────────────────────────────────────────
@@ -882,12 +853,6 @@ export default {
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit'
       });
-    },
-
-    /** 截取文本预览，超出部分加省略号 */
-    truncate(text, len = 50) {
-      if (!text) return '';
-      return text.length > len ? text.substring(0, len) + '...' : text;
     }
   }
 };
@@ -902,13 +867,15 @@ export default {
   right: 0;
   z-index: 100;
   height: 64px;
-  background: #ffffff;
+  background: var(--surface-container-lowest);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 var(--spacing-8);
   box-sizing: border-box;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow);
 }
 
 .header-left,
@@ -918,8 +885,63 @@ export default {
   min-width: 40px;
 }
 
+.header-left {
+  gap: var(--spacing-3);
+  min-width: 0;
+  flex: 1;
+}
+
 .header-right {
   justify-content: flex-end;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.header-brand-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: var(--shadow-primary);
+  flex-shrink: 0;
+}
+
+.header-brand-icon .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.header-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header-brand-title {
+  font-size: 18px;
+  font-weight: 800;
+  font-family: var(--font-display);
+  color: var(--primary);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.header-brand-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 2px;
 }
 
 .back-btn {
@@ -928,40 +950,47 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .back-btn:hover,
 .back-btn-hover {
-  background: #f5f5f5;
+  background: var(--surface-container-low);
 }
 
 .back-icon {
   font-size: 20px;
-  color: #5f6368;
+  color: var(--on-surface-variant);
   font-family: 'Material Symbols Outlined', sans-serif;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-.header-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #005bbf;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  text-align: center;
-  flex: 1;
-}
-
 /* ==================== 基础布局 ==================== */
 .paper-preview-page {
+  --primary: #005bbf;
+  --primary-container: #1a73e8;
+  --surface-container-low: #f3f4f5;
+  --surface-container-lowest: #ffffff;
+  --on-surface-variant: #5f6368;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-primary: 0 4px 16px rgba(0, 91, 191, 0.25);
+  --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --spacing-3: 0.75rem;
+  --spacing-8: 2rem;
+  --radius-md: 0.75rem;
+  --annotation-panel-width: 300px;
+  --annotation-panel-gap: 12px;
+  --annotation-panel-edge-gap: 8px;
   height: 100vh;
   background-color: #f5f5f5;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: hidden;
   padding-top: 64px;
 }
 
@@ -1038,6 +1067,7 @@ export default {
   min-height: 0;
   overflow: hidden;
   background-color: #e8e8e8;
+  transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .doc-scroll { height: 100%; }
@@ -1122,13 +1152,13 @@ export default {
 .annotation-list-panel {
   position: fixed;
   top: 64px;
-  right: 0;
-  width: 320px;
-  max-width: 85vw;
+  right: var(--annotation-panel-edge-gap);
+  width: var(--annotation-panel-width);
+  max-width: calc(88vw - 50rpx - var(--annotation-panel-edge-gap));
   height: calc(100vh - 64px);
   background-color: #ffffff;
   box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
-  z-index: 900;
+  z-index: 98;
   display: flex;
   flex-direction: column;
   border-radius: 12px 0 0 12px;
@@ -1148,44 +1178,54 @@ export default {
   }
 }
 
-.annotation-list-panel.collapsed {
-  width: auto;
-  min-width: 100px;
-  height: auto;
-  max-height: 60px;
-}
-
 .annotation-list-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 30rpx;
+  justify-content: center;
+  padding: 30rpx 36rpx;
   background-color: #f8f9fa;
   border-bottom: 1rpx solid #e9ecef;
 }
 
 .annotation-list-title {
+  width: 100%;
   font-size: 32rpx;
   font-weight: 600;
   color: #2d3748;
-}
-
-.annotation-list-toggle-btn {
-  font-size: 24rpx;
-  color: #1890ff;
-  padding: 8rpx 16rpx;
-  cursor: pointer;
-  background-color: rgba(24, 144, 255, 0.1);
-  border-radius: 8rpx;
-  font-weight: 500;
+  text-align: center;
 }
 
 .annotation-list-body {
   flex: 1;
-  padding: 20rpx;
+  padding: 20rpx 10px 20rpx 20rpx;
+  min-height: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100vh - 64px - 100rpx);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+}
+
+.annotation-list-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.annotation-list-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.annotation-list-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.9);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.annotation-list-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.95);
+  background-clip: content-box;
 }
 
 .annotation-list-item {
@@ -1236,33 +1276,111 @@ export default {
 
 .annotation-list-item-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 12rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: 18rpx;
 }
 
-.annotation-list-item-badge { font-size: 28rpx; }
+.annotation-list-item-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.annotation-list-item-badge.ai {
+  color: #1890ff;
+  background-color: rgba(24, 144, 255, 0.14);
+}
+
+.annotation-list-item-badge.teacher {
+  color: #d97706;
+  background-color: rgba(250, 173, 20, 0.16);
+}
 
 .annotation-list-item-author {
   font-size: 28rpx;
   font-weight: 500;
   color: #2d3748;
   flex: 1;
+  min-width: 180rpx;
 }
 
 .annotation-list-item-time {
   font-size: 24rpx;
   color: #a0aec0;
+  margin-left: auto;
 }
 
-.annotation-list-item-preview {
-  font-size: 26rpx;
-  color: #718096;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.annotation-list-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.annotation-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.annotation-list-section-label {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #4a5568;
+}
+
+.annotation-list-section-box {
+  display: block;
+  padding: 18rpx 20rpx;
+  border-radius: 12rpx;
+  font-size: 25rpx;
+  line-height: 1.7;
+  color: #334155;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+
+.annotation-list-section-box.selected {
+  background-color: #fff8e1;
+  border-left: 4rpx solid #ffc107;
+  color: #6b4f00;
+}
+
+.annotation-list-section-box.comment {
+  background-color: #f0f7ff;
+  border-left: 4rpx solid #1890ff;
+  color: #1a3c6e;
+}
+
+.annotation-list-section-box.suggestion {
+  background-color: #f0fff4;
+  border-left: 4rpx solid #38a169;
+  color: #1c4532;
+}
+
+.annotation-list-rich-text {
+  display: block;
+  font-size: 25rpx;
+  line-height: 1.7;
+  color: inherit;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.annotation-list-section-box.comment :deep(p) {
+  margin: 0 0 12rpx;
+}
+
+.annotation-list-section-box.comment :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 /* ==================== 批注详情弹窗 ==================== */
@@ -1485,22 +1603,20 @@ export default {
 
 /* 深色模式 - 顶部标题栏 */
 .dark-mode .top-header {
-  background: #2d3748;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
 }
 
 .dark-mode .back-btn:hover,
 .dark-mode .back-btn-hover {
-  background: #383838;
+  background: var(--surface-container-low);
 }
 
 .dark-mode .back-icon {
-  color: #9aa0a6;
+  color: var(--on-surface-variant);
 }
 
-.dark-mode .header-title {
-  color: #8ab4f8;
-}
+.dark-mode .header-brand-title { color: var(--primary); }
 
 .dark-mode .loading-container,
 .dark-mode .error-container { background-color: #1a1a1a; }
@@ -1580,10 +1696,53 @@ export default {
 }
 
 .dark-mode .annotation-list-item-author { color: #e2e8f0; }
-.dark-mode .annotation-list-item-preview { color: #a0aec0; }
-.dark-mode .annotation-list-toggle-btn {
-  color: #4db3ff;
-  background-color: rgba(24, 144, 255, 0.2);
+.dark-mode .annotation-list-item-badge.ai {
+  color: #7cc4ff;
+  background-color: rgba(77, 179, 255, 0.18);
+}
+
+.dark-mode .annotation-list-item-badge.teacher {
+  color: #ffd54f;
+  background-color: rgba(255, 213, 79, 0.18);
+}
+
+.dark-mode .annotation-list-section-label { color: #cbd5e1; }
+
+.dark-mode .annotation-list-section-box {
+  background-color: #1f2937;
+  color: #e2e8f0;
+}
+
+.dark-mode .annotation-list-section-box.selected {
+  background-color: rgba(245, 158, 11, 0.16);
+  border-left-color: #fbbf24;
+  color: #fde68a;
+}
+
+.dark-mode .annotation-list-section-box.comment {
+  background-color: rgba(37, 99, 235, 0.16);
+  border-left-color: #60a5fa;
+  color: #dbeafe;
+}
+
+.dark-mode .annotation-list-section-box.suggestion {
+  background-color: rgba(22, 163, 74, 0.16);
+  border-left-color: #4ade80;
+  color: #dcfce7;
+}
+
+.dark-mode .annotation-list-body {
+  scrollbar-color: rgba(100, 116, 139, 0.95) transparent;
+}
+
+.dark-mode .annotation-list-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.95);
+  background-clip: content-box;
+}
+
+.dark-mode .annotation-list-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.98);
+  background-clip: content-box;
 }
 
 /* 深色模式 - 下划线批注 */
@@ -1821,6 +1980,173 @@ export default {
 }
 
 /* 窗口缩放时的过渡动画 */
+@media screen and (max-width: 767px) {
+  .top-header {
+    padding: 0 16rpx;
+  }
+
+  .header-left {
+    gap: 10px;
+  }
+
+  .back-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .back-icon {
+    font-size: 18px;
+  }
+
+  .header-brand-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .header-brand-title {
+    font-size: 15px;
+  }
+
+  .header-brand-subtitle {
+    display: none;
+  }
+
+  .doc-inner {
+    padding: 16rpx;
+  }
+
+  .annotation-list-panel {
+    width: calc(min(340px, 82vw) - 50rpx);
+    max-width: calc(82vw - 50rpx);
+  }
+
+  .annotation-list-header {
+    padding: 20rpx 22rpx;
+  }
+
+  .annotation-list-title {
+    font-size: 28rpx;
+  }
+
+  .annotation-list-body {
+    padding: 16rpx;
+    max-height: calc(100vh - 64px - 88rpx);
+  }
+
+  .annotation-list-item {
+    padding: 18rpx;
+  }
+
+  .annotation-list-item-author {
+    font-size: 24rpx;
+  }
+
+  .annotation-list-item-time {
+    font-size: 20rpx;
+  }
+
+  .annotation-list-section-label {
+    font-size: 22rpx;
+  }
+
+  .annotation-list-section-box,
+  .annotation-list-rich-text {
+    font-size: 22rpx;
+  }
+
+  .annotation-modal {
+    width: calc(100vw - 24px);
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    height: 56px;
+    padding: 0 16rpx;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .modal-title {
+    font-size: 15px;
+  }
+
+  .modal-body {
+    padding: 16rpx;
+  }
+
+  .annotation-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12rpx;
+  }
+
+  .annotation-author-section {
+    flex-wrap: wrap;
+  }
+
+  .annotation-time {
+    white-space: normal;
+  }
+
+  .section-label {
+    font-size: 24rpx;
+    margin-bottom: 12rpx;
+  }
+
+  .section-box,
+  .section-box rich-text,
+  .section-box .section-text {
+    font-size: 26rpx;
+  }
+}
+
+@media screen and (min-width: 992px) {
+  .paper-preview-page.has-annotation-panel .doc-preview-wrapper {
+    margin-right: calc(
+      var(--annotation-panel-width) + var(--annotation-panel-gap) + var(--annotation-panel-edge-gap)
+    );
+  }
+
+  .paper-preview-page.has-annotation-panel .doc-inner {
+    padding-right: 20rpx;
+  }
+}
+
+@media screen and (min-width: 1200px) and (max-width: 1439px) {
+  .paper-preview-page {
+    --annotation-panel-width: 320px;
+    --annotation-panel-gap: 14px;
+  }
+}
+
+@media screen and (min-width: 1440px) {
+  .paper-preview-page {
+    --annotation-panel-width: 340px;
+    --annotation-panel-gap: 16px;
+  }
+}
+
+@media screen and (max-width: 479px) {
+  .annotation-list-panel {
+    width: calc(92vw - 50rpx);
+    max-width: calc(92vw - 50rpx);
+  }
+
+  .annotation-modal {
+    width: calc(100vw - 16px);
+  }
+}
+
+@media screen and (max-height: 920px) {
+  .annotation-list-body {
+    max-height: calc(100vh - 64px - 84rpx);
+  }
+
+  .section-box {
+    max-height: 240rpx;
+  }
+}
+
 .preview-container,
 .modal-container,
 .docx-preview-wrapper {

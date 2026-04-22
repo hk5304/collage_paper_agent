@@ -59,16 +59,17 @@ export function getDashboardData() {
   return get('/api/v1/admin/dashboard/stats');
 }
 
-/** 查看群组论文列表 (匹配截图: GET /api/v1/groups/papers) */
-export function getGroupPapers(teacherId, groupId) {
+/** 查看群组论文列表 (GET /api/v1/groups/papers) */
+export function getGroupPapers(groupId) {
   const userInfo = uni.getStorageSync('userInfo') || {};
+  const teacherId = userInfo.id || uni.getStorageSync('teacher_id') || 0;
   const currentUser = JSON.stringify({
-    sub: userInfo.id || 0,
+    sub: teacherId,
     roles: [userInfo.role || 'teacher'],
     username: userInfo.username || 'teacher'
   });
   return get('/api/v1/groups/papers', { 
-    teacher_id: teacherId,
+    teacher_id: String(teacherId),
     group_id: groupId,
     current_user: currentUser 
   });

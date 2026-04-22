@@ -629,10 +629,11 @@ export default {
   --radius-full: 9999px;
   
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
   background: var(--surface);
   font-family: var(--font-body);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ===== 顶部标题栏 ===== */
@@ -756,7 +757,8 @@ export default {
   display: flex;
   flex: 1;
   margin-top: 64px;
-  height: calc(100vh - 64px);
+  min-height: calc(100vh - 64px);
+  height: auto;
 }
 
 /* ===== 侧边栏 ===== */
@@ -768,7 +770,7 @@ export default {
   width: 281px;
   background: var(--surface-bright);
   box-shadow: var(--shadow-ambient);
-  z-index: 101;
+  z-index: 98;
   display: flex;
   flex-direction: column;
   padding: var(--spacing-6);
@@ -879,8 +881,9 @@ export default {
   padding: var(--spacing-6) var(--spacing-8);
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  height: calc(100vh - 64px);
+  min-height: calc(100vh - 64px);
+  height: auto;
+  overflow: visible;
 }
 
 .content-canvas {
@@ -891,6 +894,7 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: visible;
 }
 
 /* 页面标题 */
@@ -1588,6 +1592,33 @@ export default {
 }
 
 /* 窗口缩放时的过渡动画 */
+@media screen and (max-height: 920px) {
+  .sidebar {
+    padding: var(--spacing-4);
+  }
+
+  .sidebar-stats {
+    padding: var(--spacing-3);
+  }
+
+  .main-content {
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-4);
+  }
+
+  .notice-card {
+    padding: var(--spacing-5);
+    margin-bottom: var(--spacing-3);
+  }
+
+  .detail-content {
+    max-height: 50vh;
+  }
+}
+
 .sidebar,
 .main-content,
 .notice-card,

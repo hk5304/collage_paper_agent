@@ -168,9 +168,10 @@
 								<text class="tip-item">1. 支持CSV格式（.csv）和XLSX格式(.xlsx)
 								</text>
 								<text class="tip-item">2. 文件大小不超过10MB</text>
-								<text class="tip-item">3. 必须包含以下列：教师姓名、教师工号、学生姓名、学生学号、群组编号、群组名称</text>
+								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、学生学号、学生姓名</text>
 							</view>
 							<view class="import-actions">
+								<button class="download-template-btn" @click="downloadTemplate">下载模板文件</button>
 								<button class="upload-file-btn" @click="chooseImportFile">选择文件上传</button>
 							</view>
 							<view v-if="selectedImportFile" class="file-info">
@@ -438,7 +439,7 @@
 						<view class="access-import-tips">
 							<text class="access-import-tip-line">支持 .csv.xlsx，单文件不超过 10MB</text>
 							<text class="access-import-tip-line">需含列：用户名, 角色类型, 全名, 密码</text>
-							<text class="access-import-tip-line">角色类型取值：student 或 teacher，用户名即学号/工号</text>
+							<text class="access-import-tip-line">角色类型取值：student/teacher/admin，用户名即学号/工号/账号</text>
 						</view>
 						<view v-if="selectedUserImportFile" class="access-import-file">
 							<text class="material-symbols-outlined access-import-file-ic">description</text>
@@ -449,10 +450,16 @@
 							<text class="access-import-file-remove" @click="removeUserImportFile">移除</text>
 						</view>
 						<view class="access-import-actions">
-							<button class="access-import-btn-secondary" type="default" @click="chooseUserImportFile">
-								<text class="material-symbols-outlined access-import-btn-ic">attach_file</text>
-								<text>选择 CSV、Excel</text>
-							</button>
+							<view class="access-import-actions-top">
+								<button class="access-import-btn-secondary" type="default" @click="downloadTemplate('tpl_20a279a0', '用户导入模板.xlsx')">
+									<text class="material-symbols-outlined access-import-btn-ic">download</text>
+									<text>下载模板文件</text>
+								</button>
+								<button class="access-import-btn-secondary" type="default" @click="chooseUserImportFile">
+									<text class="material-symbols-outlined access-import-btn-ic">attach_file</text>
+									<text>选择 CSV、Excel</text>
+								</button>
+							</view>
 							<button
 								class="access-import-btn-primary"
 								type="default"
@@ -699,7 +706,7 @@
 								</view>
 								<view class="dash-deadline-copy">
 									<text class="dash-deadline-title">查看与管理截止日期</text>
-									<text class="dash-deadline-desc">按教师工号查询，维护各教师设置的截止日期</text>
+									<text class="dash-deadline-desc">按群组编号查询，维护各群组设置的截止日期</text>
 								</view>
 								<text class="material-symbols-outlined dash-deadline-chevron">chevron_right</text>
 							</view>
@@ -717,7 +724,7 @@
 									<text class="material-symbols-outlined">upload</text>
 								</view>
 								<view class="dash-paper-row-meta">
-									<text class="dash-paper-row-label">已上传论文</text>
+									<text class="dash-paper-row-label">待审阅论文</text>
 									<text class="dash-paper-row-value">{{ dashboardStats.paperUploaded }}</text>
 								</view>
 							</view>
@@ -726,7 +733,7 @@
 									<text class="material-symbols-outlined">hourglass_top</text>
 								</view>
 								<view class="dash-paper-row-meta">
-									<text class="dash-paper-row-label">未审阅论文</text>
+									<text class="dash-paper-row-label">待修改论文</text>
 									<text class="dash-paper-row-value">{{ dashboardStats.paperUnreviewed }}</text>
 								</view>
 							</view>
@@ -735,7 +742,7 @@
 									<text class="material-symbols-outlined">check_circle</text>
 								</view>
 								<view class="dash-paper-row-meta">
-									<text class="dash-paper-row-label">已更新论文</text>
+									<text class="dash-paper-row-label">已定稿论文</text>
 									<text class="dash-paper-row-value">{{ dashboardStats.paperUpdated }}</text>
 								</view>
 							</view>
@@ -1372,21 +1379,21 @@
 				</view>
 				<view class="admin-dialog-body deadline-modal-body">
 					<view class="deadline-query-block">
-						<text class="deadline-field-label">教师工号 / 用户名</text>
+						<text class="deadline-field-label">群组编号</text>
 						<view class="deadline-query-row">
-							<text class="material-symbols-outlined deadline-query-ic">person_search</text>
+							<text class="material-symbols-outlined deadline-query-ic">tag</text>
 							<input
 								class="deadline-query-input"
 								type="text"
-								v-model="teacherIdInput"
-								placeholder="例如 t123"
+								v-model="groupIdInput"
+								placeholder="例如 243"
 							/>
-							<button class="deadline-query-btn" type="default" @click="queryDeadlineByTeacherId">
+							<button class="deadline-query-btn" type="default" @click="queryDeadlineByGroupId">
 								<text class="deadline-query-btn-label">查询</text>
 							</button>
 						</view>
-						<text v-if="selectedTeacher" class="deadline-parsed-hint">
-							已解析：{{ selectedTeacher.username || selectedTeacher.name }}（sub: {{ selectedTeacher.id }}）
+						<text v-if="selectedGroupId" class="deadline-parsed-hint">
+							已查询群组：{{ selectedGroupId }}
 						</text>
 					</view>
 					<view class="deadline-list-block">
@@ -1395,7 +1402,7 @@
 							<view v-if="deadlineList.length === 0" class="deadline-empty">
 								<text class="material-symbols-outlined deadline-empty-ic">event_busy</text>
 								<text class="deadline-empty-txt">暂无截止日期数据</text>
-								<text class="deadline-empty-sub">输入教师工号并查询后将显示该教师的 DDL</text>
+								<text class="deadline-empty-sub">输入群组编号并查询后将显示该群组的 DDL</text>
 							</view>
 							<view v-else class="deadline-list">
 								<view v-for="(item, index) in deadlineList" :key="item.ddlid || index" class="deadline-item">
@@ -1404,8 +1411,8 @@
 											<text class="deadline-class">DDL ID: {{ item.ddlid }}</text>
 											<text class="deadline-time">{{ formatDeadlineTime(item.ddl_time) }}</text>
 										</view>
-										<view class="deadline-meta" v-if="selectedTeacher">
-											<text class="deadline-meta-chip">教师 {{ selectedTeacher.queryInput }}</text>
+										<view class="deadline-meta" v-if="selectedGroupId">
+											<text class="deadline-meta-chip">群组 {{ selectedGroupId }}</text>
 										</view>
 									</view>
 									<button class="deadline-item-delete" type="default" @click="showDeleteConfirm(item)">删除</button>
@@ -2007,10 +2014,9 @@
 				},
 				// 截止日期管理
 				showDeadlineModal: false,
-				teacherList: [],
-				selectedTeacher: null,
 				deadlineList: [],
-				teacherIdInput: '',
+				groupIdInput: '',
+				selectedGroupId: null,
 				// 删除确认弹窗
 				showDeleteDeadlineModal: false,
 				deletingItem: null,
@@ -3091,110 +3097,26 @@
 			// 关闭截止日期管理弹窗
 			closeDeadlineModal() {
 				this.showDeadlineModal = false;
-				this.selectedTeacher = null;
+				this.selectedGroupId = null;
 				this.deadlineList = [];
-				this.teacherIdInput = '';
+				this.groupIdInput = '';
 			},
 			
-			// 加载教师列表
-			async loadTeacherList() {
-				try {
-					const adminInfo = await this.getOrCreateAdmin();
-					const currentUser = {
-						sub: adminInfo.id || 1,
-						username: adminInfo.username || 'admin',
-						roles: ['admin']
-					};
-					
-					const res = await uni.request({
-						url: config.baseURL + '/api/v1/admin/teachers',
-						method: 'GET',
-						data: {
-							page: 1,
-							page_size: 100,
-							current_user: JSON.stringify(currentUser)
-						}
-					});
-					
-					if (res.statusCode === 200 && res.data) {
-						const data = res.data.data || res.data;
-						this.teacherList = (data.teachers || data.list || []).map(t => ({
-							id: t.id,
-							name: t.name || t.username || `教师${t.id}`,
-							username: t.username
-						}));
-					}
-				} catch (error) {
-					console.error('加载教师列表失败:', error);
-					uni.showToast({ title: '加载教师列表失败', icon: 'none' });
-				}
-			},
-			
-			// 选择教师
-			onTeacherSelect(e) {
-				const index = e.detail.value;
-				this.selectedTeacher = this.teacherList[index];
-				this.loadDeadlineList();
-			},
-			
-			// 根据工号/用户名查询：先 get-sub-auto 取 sub，再用 teacher_id=sub 拉 DDL
-			async queryDeadlineByTeacherId() {
-				const username = (this.teacherIdInput || '').trim();
-				if (!username) {
-					uni.showToast({ title: '请输入教师工号或用户名', icon: 'none' });
+			// 根据群组编号查询截止日期
+			async queryDeadlineByGroupId() {
+				const groupId = (this.groupIdInput || '').trim();
+				if (!groupId) {
+					uni.showToast({ title: '请输入群组编号', icon: 'none' });
 					return;
 				}
 				
-				try {
-					uni.showLoading({ title: '查询中...' });
-					const { getUserSubAuto } = await import('@/api/admin.js');
-					const subResult = await getUserSubAuto(username);
-					
-					if (!subResult || subResult.code !== 200 || !subResult.data) {
-						uni.hideLoading();
-						uni.showToast({
-							title: subResult?.message || '未找到该用户',
-							icon: 'none'
-						});
-						this.selectedTeacher = null;
-						this.deadlineList = [];
-						return;
-					}
-					
-					const { sub, user_type, username: resolvedName } = subResult.data;
-					if (user_type !== 'teacher') {
-						uni.hideLoading();
-						uni.showToast({ title: '该账号不是教师，无法查询截止日期', icon: 'none' });
-						this.selectedTeacher = null;
-						this.deadlineList = [];
-						return;
-					}
-					
-					const subNum = parseInt(String(sub), 10);
-					this.selectedTeacher = {
-						id: Number.isNaN(subNum) ? sub : subNum,
-						name: resolvedName || username,
-						username: resolvedName || username,
-						queryInput: username
-					};
-					
-					uni.hideLoading();
-					await this.loadDeadlineList();
-				} catch (err) {
-					uni.hideLoading();
-					console.error('查询教师 sub 失败:', err);
-					uni.showToast({
-						title: err?.message || '查询失败',
-						icon: 'none'
-					});
-					this.selectedTeacher = null;
-					this.deadlineList = [];
-				}
+				this.selectedGroupId = groupId;
+				await this.loadDeadlineList();
 			},
 			
 			// 加载截止日期列表
 			async loadDeadlineList() {
-				if (!this.selectedTeacher) return;
+				if (!this.selectedGroupId) return;
 				
 				try {
 					uni.showLoading({ title: '加载中...' });
@@ -3210,7 +3132,7 @@
 						url: config.baseURL + '/api/v1/papers/ddl/list',
 						method: 'GET',
 						data: {
-							teacher_id: this.selectedTeacher.id,
+							group_id: this.selectedGroupId,
 							current_user: JSON.stringify(currentUser)
 						}
 					});
@@ -3380,7 +3302,7 @@
 			async confirmDeleteMember() {
 				if (!this.deletingMember) return;
 				
-				const { member_id, name, type, account_id } = this.deletingMember;
+				const { member_id, name, type, account_id, teacher_id, student_id, admin_id } = this.deletingMember;
 				
 				try {
 					uni.showLoading({ title: '删除中...' });
@@ -3396,9 +3318,17 @@
 						username: adminInfo.username || 'admin'
 					};
 					
-					// 调用删除成员接口
-					// 使用 account_id 或 member_id 作为要删除的成员ID
-					const memberIdToDelete = account_id || member_id;
+					// 根据成员类型获取正确的业务ID
+					let memberIdToDelete;
+					if (type === 'teacher') {
+						memberIdToDelete = teacher_id || account_id || member_id;
+					} else if (type === 'student') {
+						memberIdToDelete = student_id || account_id || member_id;
+					} else if (type === 'admin') {
+						memberIdToDelete = admin_id || account_id || member_id;
+					} else {
+						memberIdToDelete = account_id || member_id;
+					}
 					
 					const result = await removeGroupMember(this.currentGroup.id, {
 						current_user: currentUser,
@@ -3780,12 +3710,61 @@
 					}
 				}
 			},
-			downloadTemplate() {
-				uni.showToast({
-					title: '下载模板文件',
-					icon: 'none'
-				});
-				// 这里应该调用下载接口
+			async downloadTemplate(templateId = 'tpl_1dcaae03', defaultFilename = '师生关系导入模板.xlsx') {
+				try {
+					uni.showLoading({ title: '下载中...' });
+					const downloadUrl = `${config.baseURL}/api/v1/admin/templates/${templateId}/download`;
+
+					// #ifdef H5
+					const response = await fetch(downloadUrl);
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					const blob = await response.blob();
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					// 尝试从响应头解析文件名，否则使用默认名称
+					const disposition = response.headers.get('content-disposition');
+					let filename = defaultFilename;
+					if (disposition) {
+						const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+						if (match) {
+							filename = decodeURIComponent(match[1].replace(/['"]/g, ''));
+						}
+					}
+					a.download = filename;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+					URL.revokeObjectURL(url);
+					uni.showToast({ title: '模板下载成功', icon: 'success' });
+					// #endif
+
+					// #ifndef H5
+					uni.downloadFile({
+						url: downloadUrl,
+						success: (res) => {
+							if (res.statusCode === 200) {
+								uni.saveFile({
+									tempFilePath: res.tempFilePath,
+									success: () => {
+										uni.showToast({ title: '模板下载成功', icon: 'success' });
+									}
+								});
+							} else {
+								uni.showToast({ title: '下载失败', icon: 'none' });
+							}
+						},
+						fail: () => {
+							uni.showToast({ title: '下载失败', icon: 'none' });
+						}
+					});
+					// #endif
+				} catch (error) {
+					console.error('下载模板失败:', error);
+					uni.showToast({ title: '下载失败', icon: 'none' });
+				} finally {
+					uni.hideLoading();
+				}
 			},
 			chooseImportFile() {
 				uni.chooseFile({
@@ -7382,26 +7361,33 @@
 	}
 	.group-ops-import-inner .import-actions {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		gap: 18rpx;
 		justify-content: flex-start;
 		margin-bottom: 0;
 	}
-	.group-ops-import-inner .upload-file-btn {
+	.group-ops-import-inner .upload-file-btn,
+	.group-ops-import-inner .download-template-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 100%;
+		flex: 1;
 		margin: 0;
 		padding: 0 28rpx;
 		min-height: 104rpx;
 		border-radius: 14rpx;
 		font-size: 26rpx;
 		font-weight: 700;
-		background: rgba(0, 91, 191, 0.08);
-		color: #005bbf;
 		border: none;
 		box-shadow: none;
+	}
+	.group-ops-import-inner .upload-file-btn {
+		background: rgba(0, 91, 191, 0.08);
+		color: #005bbf;
+	}
+	.group-ops-import-inner .download-template-btn {
+		background: #f1f5f9;
+		color: #475569;
 	}
 	.group-ops-import-inner .file-info {
 		margin-bottom: 0;
@@ -7598,8 +7584,12 @@
 		.group-ops-title {
 			font-size: 32rpx;
 		}
+		.group-ops-import-inner .import-actions {
+			flex-direction: column;
+		}
 		.group-ops-create-btn,
 		.group-ops-import-inner .upload-file-btn,
+		.group-ops-import-inner .download-template-btn,
 		.group-ops-import-inner .submit-import-btn,
 		.group-ops-download-start,
 		.group-ops-download-inner .download-preview-count-btn {
@@ -9780,16 +9770,17 @@
 		flex-direction: column;
 		gap: 14rpx;
 	}
+	.access-import-actions-top {
+		display: flex;
+		gap: 14rpx;
+	}
+	.access-import-actions-top .access-import-btn-secondary {
+		flex: 1;
+	}
 
 	@media screen and (min-width: 560px) {
-		.access-import-actions {
-			flex-direction: row;
-			flex-wrap: wrap;
-		}
-		.access-import-btn-secondary,
 		.access-import-btn-primary {
-			flex: 1;
-			min-width: 200rpx;
+			width: 100%;
 		}
 	}
 
