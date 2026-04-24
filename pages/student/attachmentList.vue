@@ -167,13 +167,36 @@
     </view>
     
     <!-- 确认弹窗组件 -->
-    <ConfirmModal
-      :visible="showConfirmModal"
-      :title="confirmModalTitle"
-      :content="confirmModalContent"
-      @confirm="handleConfirmModalConfirm"
-      @cancel="handleConfirmModalCancel"
-    />
+    <view
+      v-if="showConfirmModal"
+      class="attachment-confirm-modal workbench-confirm-modal"
+      @click.self="handleConfirmModalCancel"
+    >
+      <view class="workbench-confirm-content">
+        <view class="paper-card-modal-header workbench-confirm-header">
+          <view class="workbench-confirm-title-group">
+            <view class="workbench-confirm-icon" :class="{ danger: confirmModalIsDanger }">
+              <text class="material-symbols-outlined">{{ confirmModalIcon }}</text>
+            </view>
+            <text class="paper-card-modal-title workbench-confirm-title">{{ confirmModalTitle }}</text>
+          </view>
+          <text class="paper-card-modal-close material-symbols-outlined" @click="handleConfirmModalCancel">close</text>
+        </view>
+        <view class="paper-card-modal-body workbench-confirm-body">
+          <text class="workbench-confirm-message">{{ confirmModalContent }}</text>
+        </view>
+        <view class="workbench-confirm-footer">
+          <button class="workbench-confirm-btn secondary" @click="handleConfirmModalCancel">取消</button>
+          <button
+            class="workbench-confirm-btn primary"
+            :class="{ danger: confirmModalIsDanger }"
+            @click="handleConfirmModalConfirm"
+          >
+            {{ confirmModalConfirmText }}
+          </button>
+        </view>
+      </view>
+    </view>
     
     <!-- 修改密码弹窗 -->
     <view v-if="showPasswordModal" class="modal-backdrop" @click.self="closePasswordModal">
@@ -232,14 +255,10 @@ import { getUserId, isValidUserId, checkLogin } from '../../utils/auth.js';
 import { getAttachmentList, deleteAttachment, getWorkbenchData } from '../../api/student.js';
 import { config } from '../../api/config.js';
 
-import ConfirmModal from '../../components/ConfirmModal.vue';
 import { changePassword } from '../../api/student.js';
 import { clearLoginState } from '../../utils/auth.js';
 
 export default {
-  components: {
-    ConfirmModal
-  },
   data() {
     return {
       // 页面淡出状态（跳转动画）
@@ -312,6 +331,18 @@ export default {
     userNameInitial() {
       const displayName = this.userInfo.full_name || this.userInfo.name || '用';
       return displayName.charAt(0);
+    },
+    confirmModalIsDanger() {
+      const modalText = `${this.confirmModalTitle || ''} ${this.confirmModalContent || ''}`;
+      return /删除|移除|不可恢复/.test(modalText);
+    },
+    confirmModalIcon() {
+      if (this.confirmModalIsDanger) return 'delete';
+      if (/下载/.test(this.confirmModalTitle || '')) return 'download';
+      return 'info';
+    },
+    confirmModalConfirmText() {
+      return this.confirmModalIsDanger ? '确认删除' : '确定';
     },
     filteredAttachments() {
       if (this.currentFilter === 'all') {
@@ -823,6 +854,7 @@ export default {
       if (this.confirmModalCallback) {
         this.confirmModalCallback(true);
       }
+      this.confirmModalCallback = null;
     },
     
     // 处理确认弹窗取消
@@ -831,6 +863,7 @@ export default {
       if (this.confirmModalCallback) {
         this.confirmModalCallback(false);
       }
+      this.confirmModalCallback = null;
     },
     
     async downloadAttachment(item) {
@@ -889,7 +922,8 @@ export default {
       });
     },
     async deleteAttachment(id, name) {
-      this.showConfirm('确认删除', `确定要删除附件 "${name}" 吗？`, async (confirmed) => {
+      const attachmentName = name || '未命名附件';
+      this.showConfirm('确认删除', `确定要删除附件《${attachmentName}》吗？此操作不可恢复。`, async (confirmed) => {
         if (!confirmed) return;
         
         try {
@@ -2983,6 +3017,206 @@ export default {
   font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.6;
+}
+
+.attachment-confirm-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24rpx;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1200;
+}
+
+.workbench-confirm-modal {
+  backdrop-filter: blur(4px);
+  animation: workbenchModalFadeIn 0.28s ease;
+}
+
+.workbench-confirm-content {
+  width: 90%;
+  max-width: 430px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 91, 191, 0.12);
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+  animation: workbenchModalPanelFadeIn 0.32s ease both;
+}
+
+@keyframes workbenchModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes workbenchModalPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.workbench-confirm-header {
+  height: auto;
+  min-height: 76px;
+  padding: 18px 22px 16px;
+  background: transparent;
+  box-shadow: none;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.workbench-confirm-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 12px;
+}
+
+.workbench-confirm-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(0, 91, 191, 0.12);
+  color: #005bbf;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.workbench-confirm-icon text {
+  font-size: 22px;
+}
+
+.workbench-confirm-icon.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.workbench-confirm-title {
+  flex: 1;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.workbench-confirm-body {
+  padding: 22px 24px 14px;
+}
+
+.workbench-confirm-message {
+  display: block;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #1f2937;
+  text-align: center;
+}
+
+.workbench-confirm-footer {
+  display: flex;
+  gap: 12px;
+  padding: 0 24px 24px;
+}
+
+.workbench-confirm-btn {
+  flex: 1;
+  height: 46px;
+  border: none;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.workbench-confirm-btn::after {
+  border: none;
+}
+
+.workbench-confirm-btn.secondary {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.workbench-confirm-btn.secondary:hover {
+  background: #e8edf3;
+  color: #374151;
+}
+
+.workbench-confirm-btn.primary {
+  background: linear-gradient(135deg, #0a7cff 0%, #005bbf 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(0, 91, 191, 0.2);
+}
+
+.workbench-confirm-btn.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(0, 91, 191, 0.24);
+}
+
+.workbench-confirm-btn.primary.danger {
+  background: linear-gradient(135deg, #f97373 0%, #ef4444 100%);
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.22);
+}
+
+.workbench-confirm-btn.primary.danger:hover {
+  box-shadow: 0 14px 28px rgba(239, 68, 68, 0.26);
+}
+
+.paper-card-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.paper-card-modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #005bbf;
+}
+
+.paper-card-modal-close {
+  font-size: 20px;
+  color: #5f6368;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.paper-card-modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 </style>

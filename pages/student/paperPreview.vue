@@ -1,5 +1,12 @@
 <template>
-  <view class="paper-preview-page" :class="{ 'dark-mode': isDarkMode, 'has-annotation-panel': annotations.length > 0 }">
+  <view
+    class="paper-preview-page"
+    :class="{
+      'dark-mode': isDarkMode,
+      'has-annotation-panel': annotations.length > 0,
+      'annotation-markers-hidden': !showAnnotationUnderline
+    }"
+  >
     <!-- 顶部标题栏 -->
     <view class="top-header">
       <view class="header-left">
@@ -16,7 +23,21 @@
           </view>
         </view>
       </view>
-      <view class="header-right"></view>
+      <view class="header-right">
+        <view
+          v-if="annotations.length > 0"
+          class="underline-toggle-btn"
+          :class="{ 'is-active': showAnnotationUnderline }"
+          @tap.stop="toggleAnnotationUnderline"
+        >
+          <text class="underline-toggle-icon material-symbols-outlined">
+            {{ showAnnotationUnderline ? 'visibility' : 'visibility_off' }}
+          </text>
+          <text class="underline-toggle-label">
+            {{ showAnnotationUnderline ? '隐藏标注' : '显示标注' }}
+          </text>
+        </view>
+      </view>
     </view>
 
     <!-- 加载中 -->
@@ -113,6 +134,7 @@ export default {
       docxUrl: '',
       docxModule: null,
       annotations: [],
+      showAnnotationUnderline: true,
       selectedAnnotation: null,
       pageTitle: '论文预览'
     };
@@ -130,6 +152,10 @@ export default {
     if (this._annotationRetryTimer) {
       clearTimeout(this._annotationRetryTimer);
       this._annotationRetryTimer = null;
+    }
+    if (this._annotationFocusTimer) {
+      clearTimeout(this._annotationFocusTimer);
+      this._annotationFocusTimer = null;
     }
   },
 
@@ -149,6 +175,10 @@ export default {
     },
 
     // ─── 数据加载 ───────────────────────────────────────────
+
+    toggleAnnotationUnderline() {
+      this.showAnnotationUnderline = !this.showAnnotationUnderline;
+    },
 
     loadPaperData(options) {
       if (options.id) this.paperId = options.id;
@@ -684,15 +714,15 @@ export default {
                               .replace(/[，。！？、；：""''（）【】]/g, '')
                               .toLowerCase();
 
-      const normFull = normalize(fullText);
-      const normSearch = normalize(searchText);
+      const { normalizedText: normFull, indexMap } = this._buildNormalizedIndexMap(fullText);
+      const { normalizedText: normSearch } = this._buildNormalizedIndexMap(searchText);
 
       if (!normSearch || normSearch.length < 2) return null;
 
       // 策略1：精确匹配
       let normIdx = normFull.indexOf(normSearch);
       if (normIdx !== -1) {
-        return this._mapNormalizedToOriginal(fullText, normIdx, normSearch.length);
+        return this._mapNormalizedToOriginal(indexMap, normIdx, normSearch.length);
       }
 
       // 策略2：前缀匹配（前20个字符）
@@ -700,7 +730,13 @@ export default {
         const prefix = normSearch.substring(0, 20);
         normIdx = normFull.indexOf(prefix);
         if (normIdx !== -1) {
-          return this._mapNormalizedToOriginal(fullText, normIdx, prefix.length);
+          const candidate = normFull.substring(normIdx, normIdx + normSearch.length);
+          if (
+            candidate.length === normSearch.length &&
+            this._calculateSimilarity(normSearch, candidate) > 0.72
+          ) {
+            return this._mapNormalizedToOriginal(indexMap, normIdx, normSearch.length);
+          }
         }
       }
 
@@ -719,7 +755,13 @@ export default {
         }
 
         if (bestMatch.similarity > 0.85) {
-          return this._mapNormalizedToOriginal(fullText, bestMatch.idx, bestMatch.length);
+          const candidate = normFull.substring(bestMatch.idx, bestMatch.idx + normSearch.length);
+          if (
+            candidate.length === normSearch.length &&
+            this._calculateSimilarity(normSearch, candidate) > 0.72
+          ) {
+            return this._mapNormalizedToOriginal(indexMap, bestMatch.idx, normSearch.length);
+          }
         }
       }
 
@@ -804,6 +846,115 @@ export default {
 
     // ─── 交互操作 ───────────────────────────────────────────
 
+    _mapNormalizedToOriginal(indexMap, normIdx, normLen) {
+      if (
+        !Array.isArray(indexMap) ||
+        normIdx < 0 ||
+        normLen <= 0 ||
+        normIdx + normLen - 1 >= indexMap.length
+      ) {
+        return null;
+      }
+
+      const startPos = indexMap[normIdx];
+      const endPos = indexMap[normIdx + normLen - 1] + 1;
+      return { startPos, endPos };
+    },
+
+    _buildNormalizedIndexMap(text) {
+      const normalizedChars = [];
+      const indexMap = [];
+      const source = typeof text === 'string' ? text : '';
+
+      for (let i = 0; i < source.length; i++) {
+        const normalizedChar = this._normalizeMatchChar(source[i]);
+        if (!normalizedChar) continue;
+        normalizedChars.push(normalizedChar);
+        indexMap.push(i);
+      }
+
+      return {
+        normalizedText: normalizedChars.join(''),
+        indexMap
+      };
+    },
+
+    _normalizeMatchChar(char) {
+      if (/[\s\u00a0\u200b\u200c\u200d\u2003\u2009\u3000\ufeff]/.test(char)) {
+        return '';
+      }
+
+      if (/["\u201C\u201D\u201E\u201F]/.test(char)) {
+        return '"';
+      }
+
+      if (/['\u2018\u2019\u201A\u201B]/.test(char)) {
+        return "'";
+      }
+
+      if (/[\uFF0C\u3002\uFF01\uFF1F\u3001\uFF1B\uFF1A\u300A\u300B\u3008\u3009\uFF08\uFF09\u3010\u3011\u300C\u300D\u300E\u300F\uFE41\uFE42\uFE43\uFE44\u3014\u3015\uFF3B\uFF3D\uFF5B\uFF5D,.!?;:()[\]{}<>]/.test(char)) {
+        return '';
+      }
+
+      return char.toLowerCase();
+    },
+
+    _wrapRange(nodes, offsets, matchStart, matchEnd, cls, index, clickHandler) {
+      const startBoundary = this._resolveTextBoundary(nodes, offsets, matchStart, false);
+      const endBoundary = this._resolveTextBoundary(nodes, offsets, matchEnd, true);
+
+      if (!startBoundary || !endBoundary) {
+        return false;
+      }
+
+      const range = document.createRange();
+      range.setStart(startBoundary.node, startBoundary.offset);
+      range.setEnd(endBoundary.node, endBoundary.offset);
+
+      if (range.collapsed) {
+        return false;
+      }
+
+      const mark = document.createElement('mark');
+      mark.className = `annotation-highlight ${cls}`;
+      mark.setAttribute('data-annotation-index', index);
+      mark.addEventListener('click', clickHandler);
+
+      const fragment = range.extractContents();
+      if (!fragment || !fragment.childNodes.length) {
+        return false;
+      }
+
+      mark.appendChild(fragment);
+      range.insertNode(mark);
+      return true;
+    },
+
+    _resolveTextBoundary(nodes, offsets, targetPos, isEnd) {
+      for (let i = 0; i < nodes.length; i++) {
+        const nodeStart = offsets[i];
+        const nodeEnd = nodeStart + nodes[i].nodeValue.length;
+        const isInsideNode = isEnd ? targetPos <= nodeEnd : targetPos < nodeEnd;
+
+        if (!isInsideNode) continue;
+
+        return {
+          node: nodes[i],
+          offset: Math.max(0, Math.min(nodes[i].nodeValue.length, targetPos - nodeStart))
+        };
+      }
+
+      const lastNode = nodes[nodes.length - 1];
+      if (!lastNode) {
+        return null;
+      }
+
+      return {
+        node: lastNode,
+        offset: lastNode.nodeValue.length
+      };
+    },
+
     selectAnnotation(annotation, index = null, syncList = true) {
       this.selectedAnnotation = annotation;
       if (!syncList || index == null) return;
@@ -821,6 +972,36 @@ export default {
 
       const container = this.$refs.docxContainer;
       if (!container) return;
+
+      const highlightMarkers = Array.from(
+        container.querySelectorAll(`mark.annotation-highlight[data-annotation-index="${index}"]`)
+      );
+      const markers = highlightMarkers.length > 0
+        ? highlightMarkers
+        : Array.from(container.querySelectorAll(`.annotation-accent[data-annotation-index="${index}"]`));
+      if (markers.length === 0) return;
+
+      markers[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      container.querySelectorAll('.annotation-locate-active').forEach(el => {
+        el.classList.remove('annotation-locate-active');
+      });
+      if (this._annotationFocusTimer) {
+        clearTimeout(this._annotationFocusTimer);
+        this._annotationFocusTimer = null;
+      }
+
+      markers.forEach(marker => {
+        marker.classList.remove('annotation-locate-active');
+        void marker.offsetWidth;
+        marker.classList.add('annotation-locate-active');
+      });
+
+      this._annotationFocusTimer = setTimeout(() => {
+        markers.forEach(marker => marker.classList.remove('annotation-locate-active'));
+        this._annotationFocusTimer = null;
+      }, 1600);
+      return;
 
       // 优先找精确 <mark> 高亮，其次找左边色条元素
       const marker =
@@ -893,6 +1074,49 @@ export default {
 
 .header-right {
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.underline-toggle-btn {
+  height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  border: 1px solid rgba(212, 160, 23, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.underline-toggle-btn:hover {
+  background: rgba(212, 160, 23, 0.08);
+  border-color: rgba(212, 160, 23, 0.38);
+  color: var(--annotation-marker-color-hover);
+}
+
+.underline-toggle-btn.is-active {
+  background: var(--annotation-marker-color-soft);
+  border-color: rgba(212, 160, 23, 0.34);
+  color: var(--annotation-marker-color-hover);
+  box-shadow: 0 6px 16px rgba(212, 160, 23, 0.18);
+}
+
+.underline-toggle-icon {
+  font-size: 18px;
+  font-family: 'Material Symbols Outlined', sans-serif;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.underline-toggle-label {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .header-brand {
@@ -984,6 +1208,9 @@ export default {
   --annotation-panel-width: 300px;
   --annotation-panel-gap: 12px;
   --annotation-panel-edge-gap: 8px;
+  --annotation-marker-color: #d4a017;
+  --annotation-marker-color-hover: #b8860b;
+  --annotation-marker-color-soft: rgba(212, 160, 23, 0.14);
   height: 100vh;
   background-color: #f5f5f5;
   display: flex;
@@ -1108,6 +1335,7 @@ export default {
   text-decoration: underline !important;
   text-decoration-thickness: 2px !important;
   text-underline-offset: 3px !important;
+  text-decoration-skip-ink: none !important;
   transition: filter 0.15s ease !important;
   font-style: normal !important;
   font-weight: inherit !important;
@@ -1118,12 +1346,31 @@ export default {
   text-decoration-thickness: 3px !important;
 }
 
+@keyframes annotationUnderlinePulse {
+  0% {
+    filter: brightness(1) drop-shadow(0 0 0 rgba(212, 160, 23, 0));
+  }
+  35% {
+    filter: brightness(1.08) drop-shadow(0 3px 8px rgba(212, 160, 23, 0.3));
+  }
+  100% {
+    filter: brightness(1) drop-shadow(0 0 0 rgba(212, 160, 23, 0));
+  }
+}
+
 :deep(mark.highlight-ai) {
-  text-decoration-color: #1890ff !important;
+  text-decoration-color: var(--annotation-marker-color) !important;
 }
 
 :deep(mark.highlight-teacher) {
-  text-decoration-color: #faad14 !important;
+  text-decoration-color: var(--annotation-marker-color) !important;
+}
+
+:deep(mark.annotation-highlight.annotation-locate-active) {
+  text-decoration-color: var(--annotation-marker-color) !important;
+  text-decoration-thickness: 4px !important;
+  text-underline-offset: 5px !important;
+  animation: annotationUnderlinePulse 0.8s ease 2 !important;
 }
 
 /* 整段高亮块样式已移除，仅保留精确文字 <mark> 高亮 */
@@ -1141,11 +1388,57 @@ export default {
 }
 
 :deep(.annotation-accent.highlight-ai) {
-  border-left-color: #1890ff !important;
+  border-left-color: var(--annotation-marker-color) !important;
 }
 
 :deep(.annotation-accent.highlight-teacher) {
-  border-left-color: #faad14 !important;
+  border-left-color: var(--annotation-marker-color) !important;
+}
+
+:deep(.annotation-accent.annotation-locate-active) {
+  text-decoration: underline !important;
+  text-decoration-color: var(--annotation-marker-color) !important;
+  text-decoration-thickness: 3px !important;
+  text-underline-offset: 5px !important;
+  animation: annotationUnderlinePulse 0.8s ease 2 !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(mark.annotation-highlight) {
+  cursor: inherit !important;
+  text-decoration: none !important;
+  transition: none !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(mark.annotation-highlight:hover) {
+  filter: none !important;
+  text-decoration-thickness: 0 !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(mark.annotation-highlight.annotation-locate-active) {
+  text-decoration: underline !important;
+  text-decoration-color: var(--annotation-marker-color) !important;
+  text-decoration-thickness: 4px !important;
+  text-underline-offset: 5px !important;
+  animation: annotationUnderlinePulse 0.8s ease 2 !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(.annotation-accent) {
+  cursor: inherit !important;
+  border-left-width: 0 !important;
+  border-left-color: transparent !important;
+  padding-left: 0 !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(.annotation-accent:hover) {
+  background-color: transparent !important;
+}
+
+.paper-preview-page.annotation-markers-hidden :deep(.annotation-accent.annotation-locate-active) {
+  text-decoration: underline !important;
+  text-decoration-color: var(--annotation-marker-color) !important;
+  text-decoration-thickness: 3px !important;
+  text-underline-offset: 5px !important;
+  animation: annotationUnderlinePulse 0.8s ease 2 !important;
 }
 
 /* ==================== 批注列表面板 ==================== */
@@ -1230,17 +1523,18 @@ export default {
 
 .annotation-list-item {
   padding: 24rpx;
-  background-color: #f8f9fa;
+  background-color: var(--surface-container-lowest);
   border-radius: 12rpx;
   margin-bottom: 16rpx;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1rpx solid #e2e8f0;
   border-left: 4rpx solid transparent;
   transform: translateX(0);
 }
 
 .annotation-list-item:hover {
-  background-color: #e9ecef;
+  background-color: var(--surface-container-low);
   transform: translateX(-4rpx);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
@@ -1251,20 +1545,21 @@ export default {
 }
 
 .annotation-list-item.active {
-  background-color: #e3f2fd;
-  border-left-color: #1890ff;
+  background-color: rgba(0, 91, 191, 0.06);
+  border-left-color: var(--primary);
+  border-color: rgba(0, 91, 191, 0.16);
 }
 
 /* AI批注激活状态边条 */
 .annotation-list-item.active.ai-item {
-  border-left-color: #1890ff;
-  background-color: rgba(24, 144, 255, 0.08);
+  border-left-color: var(--primary);
+  background-color: rgba(0, 91, 191, 0.06);
 }
 
 /* 教师批注激活状态边条 */
 .annotation-list-item.active.teacher-item {
-  border-left-color: #faad14;
-  background-color: rgba(250, 173, 20, 0.08);
+  border-left-color: var(--primary);
+  background-color: rgba(0, 91, 191, 0.06);
 }
 
 .annotation-list-empty {
@@ -1291,16 +1586,9 @@ export default {
   font-size: 22rpx;
   font-weight: 700;
   line-height: 1.2;
-}
-
-.annotation-list-item-badge.ai {
-  color: #1890ff;
-  background-color: rgba(24, 144, 255, 0.14);
-}
-
-.annotation-list-item-badge.teacher {
-  color: #d97706;
-  background-color: rgba(250, 173, 20, 0.16);
+  color: var(--on-surface-variant);
+  background-color: var(--surface-container-low);
+  border: 1rpx solid rgba(95, 99, 104, 0.16);
 }
 
 .annotation-list-item-author {
@@ -1332,7 +1620,7 @@ export default {
 .annotation-list-section-label {
   font-size: 24rpx;
   font-weight: 700;
-  color: #4a5568;
+  color: var(--on-surface-variant);
 }
 
 .annotation-list-section-box {
@@ -1346,24 +1634,24 @@ export default {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   box-sizing: border-box;
+  background-color: var(--surface-container-lowest);
+  border: 1rpx solid #e2e8f0;
 }
 
 .annotation-list-section-box.selected {
-  background-color: #fff8e1;
-  border-left: 4rpx solid #ffc107;
-  color: #6b4f00;
+  background-color: #f8fafc;
+  border-left: 4rpx solid #94a3b8;
+  color: #334155;
 }
 
 .annotation-list-section-box.comment {
-  background-color: #f0f7ff;
-  border-left: 4rpx solid #1890ff;
-  color: #1a3c6e;
+  border-left: 4rpx solid #cbd5e1;
+  color: #334155;
 }
 
 .annotation-list-section-box.suggestion {
-  background-color: #f0fff4;
-  border-left: 4rpx solid #38a169;
-  color: #1c4532;
+  border-left: 4rpx solid #cbd5e1;
+  color: #334155;
 }
 
 .annotation-list-rich-text {
@@ -1599,7 +1887,12 @@ export default {
 .suggestion-box .section-text { color: #1c4532; }
 
 /* ==================== 深色模式 ==================== */
-.paper-preview-page.dark-mode { background-color: #1a1a1a; }
+.paper-preview-page.dark-mode {
+  background-color: #1a1a1a;
+  --annotation-marker-color: #f4c451;
+  --annotation-marker-color-hover: #ffd86b;
+  --annotation-marker-color-soft: rgba(244, 196, 81, 0.18);
+}
 
 /* 深色模式 - 顶部标题栏 */
 .dark-mode .top-header {
@@ -1617,6 +1910,25 @@ export default {
 }
 
 .dark-mode .header-brand-title { color: var(--primary); }
+
+.dark-mode .underline-toggle-btn {
+  background: rgba(17, 24, 39, 0.88);
+  border-color: rgba(244, 196, 81, 0.28);
+  color: #e2e8f0;
+}
+
+.dark-mode .underline-toggle-btn:hover {
+  background: rgba(244, 196, 81, 0.14);
+  border-color: rgba(244, 196, 81, 0.42);
+  color: var(--annotation-marker-color-hover);
+}
+
+.dark-mode .underline-toggle-btn.is-active {
+  background: var(--annotation-marker-color-soft);
+  border-color: rgba(244, 196, 81, 0.42);
+  color: #fff3c4;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
 
 .dark-mode .loading-container,
 .dark-mode .error-container { background-color: #1a1a1a; }
@@ -1668,27 +1980,29 @@ export default {
 .dark-mode .annotation-list-title { color: #ffffff; }
 
 .dark-mode .annotation-list-item {
-  background-color: #1a202c;
+  background-color: #111827;
+  border-color: #374151;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .dark-mode .annotation-list-item:hover {
-  background-color: #2d3748;
+  background-color: #1f2937;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .dark-mode .annotation-list-item.active {
-  background-color: rgba(24, 144, 255, 0.2);
-  border-left-color: #1890ff;
+  background-color: rgba(77, 144, 255, 0.14);
+  border-left-color: #4f8edc;
+  border-color: rgba(77, 144, 255, 0.26);
 }
 
 .dark-mode .annotation-list-item.active.ai-item {
-  border-left-color: #4db3ff;
-  background-color: rgba(77, 179, 255, 0.15);
+  border-left-color: #4f8edc;
+  background-color: rgba(77, 144, 255, 0.14);
 }
 
 .dark-mode .annotation-list-item.active.teacher-item {
-  border-left-color: #ffd54f;
-  background-color: rgba(255, 213, 79, 0.15);
+  border-left-color: #4f8edc;
+  background-color: rgba(77, 144, 255, 0.14);
 }
 
 .dark-mode .annotation-list-empty {
@@ -1696,39 +2010,34 @@ export default {
 }
 
 .dark-mode .annotation-list-item-author { color: #e2e8f0; }
-.dark-mode .annotation-list-item-badge.ai {
-  color: #7cc4ff;
-  background-color: rgba(77, 179, 255, 0.18);
-}
-
-.dark-mode .annotation-list-item-badge.teacher {
-  color: #ffd54f;
-  background-color: rgba(255, 213, 79, 0.18);
+.dark-mode .annotation-list-item-badge {
+  color: #cbd5e1;
+  background-color: #1f2937;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .dark-mode .annotation-list-section-label { color: #cbd5e1; }
 
 .dark-mode .annotation-list-section-box {
-  background-color: #1f2937;
+  background-color: #111827;
   color: #e2e8f0;
+  border-color: #374151;
 }
 
 .dark-mode .annotation-list-section-box.selected {
-  background-color: rgba(245, 158, 11, 0.16);
-  border-left-color: #fbbf24;
-  color: #fde68a;
+  background-color: #0f172a;
+  border-left-color: #64748b;
+  color: #e2e8f0;
 }
 
 .dark-mode .annotation-list-section-box.comment {
-  background-color: rgba(37, 99, 235, 0.16);
-  border-left-color: #60a5fa;
-  color: #dbeafe;
+  border-left-color: #475569;
+  color: #e2e8f0;
 }
 
 .dark-mode .annotation-list-section-box.suggestion {
-  background-color: rgba(22, 163, 74, 0.16);
-  border-left-color: #4ade80;
-  color: #dcfce7;
+  border-left-color: #475569;
+  color: #e2e8f0;
 }
 
 .dark-mode .annotation-list-body {
@@ -1747,11 +2056,11 @@ export default {
 
 /* 深色模式 - 下划线批注 */
 .dark-mode :deep(mark.highlight-ai) {
-  text-decoration-color: #4db3ff;
+  text-decoration-color: var(--annotation-marker-color);
 }
 
 .dark-mode :deep(mark.highlight-teacher) {
-  text-decoration-color: #ffd54f;
+  text-decoration-color: var(--annotation-marker-color);
 }
 
 /* 深色模式 - 段落左边色条 */
@@ -1759,8 +2068,8 @@ export default {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-.dark-mode :deep(.annotation-accent.highlight-ai) { border-left-color: #4db3ff; }
-.dark-mode :deep(.annotation-accent.highlight-teacher) { border-left-color: #ffd54f; }
+.dark-mode :deep(.annotation-accent.highlight-ai) { border-left-color: var(--annotation-marker-color); }
+.dark-mode :deep(.annotation-accent.highlight-teacher) { border-left-color: var(--annotation-marker-color); }
 
 
 .dark-mode .annotation-modal {
@@ -2011,6 +2320,16 @@ export default {
     display: none;
   }
 
+  .underline-toggle-btn {
+    height: 36px;
+    padding: 0 10px;
+    gap: 4px;
+  }
+
+  .underline-toggle-label {
+    font-size: 12px;
+  }
+
   .doc-inner {
     padding: 16rpx;
   }
@@ -2127,6 +2446,15 @@ export default {
 }
 
 @media screen and (max-width: 479px) {
+  .underline-toggle-btn {
+    height: 34px;
+    padding: 0 8px;
+  }
+
+  .underline-toggle-label {
+    font-size: 11px;
+  }
+
   .annotation-list-panel {
     width: calc(92vw - 50rpx);
     max-width: calc(92vw - 50rpx);

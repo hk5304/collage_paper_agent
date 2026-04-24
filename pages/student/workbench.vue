@@ -6579,6 +6579,7 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: workbenchModalFadeIn 0.28s ease;
 }
 
 .paper-card-review-content,
@@ -6590,6 +6591,7 @@ export default {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
+  animation: workbenchModalPanelFadeIn 0.32s ease both;
 }
 
 .paper-card-review-content {
@@ -6604,6 +6606,7 @@ export default {
 
 .workbench-confirm-modal {
   backdrop-filter: blur(4px);
+  animation: workbenchModalFadeIn 0.28s ease;
 }
 
 .workbench-confirm-content {
@@ -6616,6 +6619,27 @@ export default {
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
+  animation: workbenchModalPanelFadeIn 0.32s ease both;
+}
+
+@keyframes workbenchModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes workbenchModalPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .workbench-confirm-header {
