@@ -171,7 +171,7 @@
 								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、学生学号、学生姓名</text>
 							</view>
 							<view class="import-actions">
-								<button class="download-template-btn" @click="downloadTemplate">下载模板文件</button>
+								<button class="download-template-btn" @click="downloadTemplate('tpl_1bd39fc2', '师生关系导入模板.xlsx')">下载模板文件</button>
 								<button class="upload-file-btn" @click="chooseImportFile">选择文件上传</button>
 							</view>
 							<view v-if="selectedImportFile" class="file-info">
@@ -3710,7 +3710,7 @@
 					}
 				}
 			},
-			async downloadTemplate(templateId = 'tpl_1dcaae03', defaultFilename = '师生关系导入模板.xlsx') {
+			async downloadTemplate(templateId = 'tpl_1bd39fc2', defaultFilename = '师生关系导入模板.xlsx') {
 				try {
 					uni.showLoading({ title: '下载中...' });
 					const downloadUrl = `${config.baseURL}/api/v1/admin/templates/${templateId}/download`;

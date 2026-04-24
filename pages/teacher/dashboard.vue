@@ -420,6 +420,39 @@
       </view>
     </view>
     
+    <!-- 全部班级截止日期汇总弹窗（仅查看） -->
+    <view v-if="showAllDeadlinesModal" class="custom-modal-mask" @click="showAllDeadlinesModal = false">
+      <view class="custom-modal-content all-deadlines-modal" @click.stop>
+        <view class="custom-modal-header">
+          <text class="material-symbols-outlined all-ddl-header-icon">event_note</text>
+          <text>各班级截止日期总览</text>
+        </view>
+        <view class="all-deadlines-list">
+          <view v-if="allDeadlinesList.length === 0" class="all-deadlines-empty">
+            <text class="material-symbols-outlined">event_busy</text>
+            <text>暂无截止日期数据</text>
+          </view>
+          <view
+            v-for="item in allDeadlinesList"
+            :key="item.classId"
+            class="all-deadlines-item"
+          >
+            <view class="all-ddl-class-info">
+              <text class="material-symbols-outlined all-ddl-ic">class</text>
+              <text class="all-ddl-class-name">{{ item.className }}</text>
+            </view>
+            <view class="all-ddl-time" :class="item.deadline === '未设置' ? 'all-ddl-time--unset' : 'all-ddl-time--set'">
+              <text class="material-symbols-outlined all-ddl-time-ic">{{ item.deadline === '未设置' ? 'event_busy' : 'event_available' }}</text>
+              <text>{{ item.deadline === '未设置' ? '未设置' : item.deadline }}</text>
+            </view>
+          </view>
+        </view>
+        <view class="custom-modal-footer" style="border-top:1px solid rgba(0,0,0,0.07);padding-top:16px">
+          <view class="modal-btn confirm" @click="showAllDeadlinesModal = false">关闭</view>
+        </view>
+      </view>
+    </view>
+    
     <!-- 消息详情弹窗 -->
     <view v-if="showMessageDetailModal" class="custom-modal-mask message-detail-mask" @click="closeMessageDetailModal">
       <view class="custom-modal-content message-detail-modal" @click.stop>
@@ -5781,8 +5814,13 @@
 					this.isBatchDownloading = false;
 				}
 			},
-			// 打开截止日期设置弹窗
+			// 打开截止日期设置弹窗（单班级）或汇总查看（全部班级）
 			openDeadlineSetting() {
+				if (this.isAllClassMode) {
+					// 全部班级模式：只查看汇总，不显示编辑弹窗
+					this.openAllDeadlinesSummary();
+					return;
+				}
 				this.showDeadlineModal = true;
 				// 打开弹窗时重新加载最新设置
 				this.modalLoading = true;
@@ -5811,36 +5849,47 @@
 				const classData = this.classList || [];
 				
 				try {
-					// 获取当前教师ID，确保是数字类型
 					const userInfo = uni.getStorageSync('userInfo');
 					const teacherId = Number(userInfo?.id || 1);
+					const currentUser = userInfo ? JSON.stringify({
+						sub: teacherId,
+						username: userInfo.username,
+						roles: Array.isArray(userInfo.role) ? userInfo.role : [userInfo.role]
+					}) : null;
 					
-					// 构造参数，确保 teacher_id 和 current_user.sub 一致
-					const params = { teacher_id: teacherId };
-					if (userInfo) {
-						params.current_user = JSON.stringify({
-							sub: teacherId,
-							username: userInfo.username,
-							roles: Array.isArray(userInfo.role) ? userInfo.role : [userInfo.role]
-						});
-					}
-					
-					// 尝试从接口获取完整列表
-					const res = await getDeadlineSetting(params);
-					if (res && res.code === 200 && Array.isArray(res.data)) {
-						// 将班级数据与截止日期数据进行匹配
-						classData.forEach(classItem => {
-							const ddlInfo = res.data.find(d => d.class_id === classItem.id);
+					// 逐个按 group_id 查询每个班级的截止日期
+					await Promise.all(classData.map(async (classItem) => {
+						const params = { teacher_id: teacherId, group_id: classItem.id };
+						if (currentUser) params.current_user = currentUser;
+						try {
+							const res = await getDeadlineSetting(params);
+							let ddlTime = null;
+							if (Array.isArray(res) && res.length > 0) {
+								ddlTime = res[0].ddl_time || res[0].deadline || null;
+							} else if (res && res.code === 200 && res.data) {
+								const d = Array.isArray(res.data) ? res.data[0] : res.data;
+								ddlTime = d ? (d.ddl_time || d.deadline) : null;
+							}
 							list.push({
 								classId: classItem.id,
 								className: classItem.name || '未知班级',
-								deadline: ddlInfo ? ddlInfo.deadline : '未设置'
+								deadline: ddlTime || '未设置'
 							});
-						});
-					} else {
-						// 降级：从本地存储汇总
-						this.aggregateDeadlinesFromStorage(classData, list);
-					}
+						} catch (e) {
+							list.push({
+								classId: classItem.id,
+								className: classItem.name || '未知班级',
+								deadline: '未设置'
+							});
+						}
+					}));
+					
+					// 按班级原顺序排序
+					list.sort((a, b) => {
+						const ia = classData.findIndex(c => c.id === a.classId);
+						const ib = classData.findIndex(c => c.id === b.classId);
+						return ia - ib;
+					});
 				} catch (err) {
 					console.error('获取所有截止日期失败:', err);
 					this.aggregateDeadlinesFromStorage(classData, list);
@@ -9774,6 +9823,96 @@
 
 .deadline-modal {
   max-width: 500px;
+}
+
+/* 全部班级截止日期汇总弹窗 */
+.all-deadlines-modal {
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.all-deadlines-modal .custom-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+  color: #0f172a;
+}
+.all-ddl-header-icon {
+  font-size: 22px;
+  color: #005bbf;
+}
+.all-deadlines-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.all-deadlines-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 0;
+  color: #94a3b8;
+  font-size: 15px;
+}
+.all-deadlines-empty .material-symbols-outlined {
+  font-size: 40px;
+}
+.all-deadlines-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  gap: 12px;
+}
+.all-ddl-class-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.all-ddl-ic {
+  font-size: 20px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.all-ddl-class-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.all-ddl-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+.all-ddl-time--set {
+  background: rgba(0, 91, 191, 0.08);
+  color: #005bbf;
+}
+.all-ddl-time--unset {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+}
+.all-ddl-time-ic {
+  font-size: 17px;
 }
 
 /* 消息详情弹窗样式 */
