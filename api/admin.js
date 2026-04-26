@@ -255,6 +255,37 @@ export function removeGroupMember(groupId, params) {
   });
 }
 
+/** 验证师生信息存在性 POST /api/v1/groups/validate */
+export function validateGroupMembers(file, currentUser = null) {
+  return new Promise((resolve, reject) => {
+    let url = config.baseURL + '/api/v1/groups/validate';
+    if (currentUser) {
+      const userParam = encodeURIComponent(JSON.stringify(currentUser));
+      url += `?current_user=${userParam}`;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    fetch(url, {
+      method: 'POST',
+      body: formData
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const msg =
+            (typeof data.msg === 'string' && data.msg) ||
+            (typeof data.message === 'string' && data.message) ||
+            (typeof data.detail === 'string' && data.detail) ||
+            `请求失败 ${response.status}`;
+          throw new Error(msg);
+        }
+        return data;
+      })
+      .then((data) => resolve(data))
+      .catch((error) => reject(error));
+  });
+}
+
 /** 导入群组与师生关系 */
 export function importGroupRelations(file, currentUser = null) {
   return new Promise((resolve, reject) => {

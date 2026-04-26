@@ -168,10 +168,10 @@
 								<text class="tip-item">1. 支持CSV格式（.csv）和XLSX格式(.xlsx)
 								</text>
 								<text class="tip-item">2. 文件大小不超过10MB</text>
-								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、学生学号、学生姓名（其中群组编号为纯数字）</text>
+								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、教师姓名、学生学号、学生姓名（其中群组编号为纯数字）</text>
 							</view>
 							<view class="import-actions">
-								<button class="download-template-btn" @click="downloadTemplate('tpl_1bd39fc2', '师生关系导入模板.xlsx')">下载模板文件</button>
+								<button class="download-template-btn" @click="downloadTemplate('tpl_4ac9fc6d', '师生关系导入模板.xlsx')">下载模板文件</button>
 								<button class="upload-file-btn" @click="chooseImportFile">选择文件上传</button>
 							</view>
 							<view v-if="selectedImportFile" class="file-info">
@@ -1494,6 +1494,55 @@
 		</view>
 	</view>
 	
+	<!-- 师生信息验证结果弹窗 -->
+	<view v-if="showValidateModal" class="validate-modal-mask" @click="closeValidateModal">
+		<view class="validate-modal-content" @click.stop>
+			<view class="validate-modal-header">
+				<view class="validate-modal-header-icon">
+					<text class="material-symbols-outlined">warning</text>
+				</view>
+				<view class="validate-modal-header-text">
+					<text class="validate-modal-title">师生信息验证结果</text>
+					<text class="validate-modal-subtitle">{{ validateResult.message }}</text>
+				</view>
+				<view class="validate-modal-close" @click="closeValidateModal">
+					<text class="material-symbols-outlined">close</text>
+				</view>
+			</view>
+			<view class="validate-modal-body">
+				<view v-if="validateResult.missingTeacherIds && validateResult.missingTeacherIds.length > 0" class="validate-section">
+					<view class="validate-section-title">
+						<text class="material-symbols-outlined validate-section-icon">person_off</text>
+						<text>缺失教师工号（{{ validateResult.missingTeacherIds.length }}位）</text>
+					</view>
+					<view class="validate-id-list">
+						<text v-for="(id, idx) in validateResult.missingTeacherIds" :key="'t'+idx" class="validate-id-tag">{{ id }}</text>
+					</view>
+				</view>
+				<view v-if="validateResult.missingStudentIds && validateResult.missingStudentIds.length > 0" class="validate-section">
+					<view class="validate-section-title">
+						<text class="material-symbols-outlined validate-section-icon">school</text>
+						<text>缺失学生学号（{{ validateResult.missingStudentIds.length }}位）</text>
+					</view>
+					<view class="validate-id-list">
+						<text v-for="(id, idx) in validateResult.missingStudentIds" :key="'s'+idx" class="validate-id-tag">{{ id }}</text>
+					</view>
+				</view>
+				<view class="validate-modal-hint">
+					<text class="material-symbols-outlined validate-hint-icon">info</text>
+					<text>是否继续导入并自动创建缺失账号？</text>
+				</view>
+			</view>
+			<view class="validate-modal-footer">
+				<button class="validate-btn validate-btn--ghost" type="default" @click="closeValidateModal">取消</button>
+				<button class="validate-btn validate-btn--primary" type="default" @click="confirmImportWithMissing">
+					<text class="material-symbols-outlined">play_arrow</text>
+					<text>继续导入</text>
+				</button>
+			</view>
+		</view>
+	</view>
+	
 	<!-- 录入学校弹窗 -->
 	<view v-if="showSchoolMaintenanceTab && showSchoolModal" class="modal-mask" @click="closeSchoolModal">
 		<view class="modal-content" @click.stop>
@@ -2074,6 +2123,16 @@
 					skipped: 0,
 					errors: [],
 					isFailure: false
+				},
+				// 师生信息验证弹窗
+				showValidateModal: false,
+				validateResult: {
+					status: '',
+					message: '',
+					missingTeacherIds: [],
+					missingStudentIds: [],
+					uploadedFile: '',
+					fileFormat: ''
 				},
 				// 批量导入用户
 				selectedUserImportFile: null,
@@ -3728,7 +3787,7 @@
 					}
 				}
 			},
-			async downloadTemplate(templateId = 'tpl_1bd39fc2', defaultFilename = '师生关系导入模板.xlsx') {
+			async downloadTemplate(templateId = 'tpl_4ac9fc6d', defaultFilename = '师生关系导入模板.xlsx') {
 				try {
 					uni.showLoading({ title: '下载中...' });
 					const downloadUrl = `${config.baseURL}/api/v1/admin/templates/${templateId}/download`;
@@ -4001,6 +4060,61 @@
 					return;
 				}
 				
+				uni.showLoading({ title: '正在验证...' });
+				
+				try {
+					const adminInfo = await this.getOrCreateAdmin();
+					const currentUser = {
+						sub: String(adminInfo.id),
+						roles: ['admin'],
+						username: String(adminInfo.username)
+					};
+					
+					const { validateGroupMembers } = await import('@/api/admin.js');
+					const validateRes = await validateGroupMembers(this.selectedImportFile, currentUser);
+					
+					console.log('验证结果:', validateRes);
+					uni.hideLoading();
+					
+					if (validateRes && validateRes.status === 'all_exist') {
+						// 全部存在，直接导入
+						await this.doImportGroupRelations(currentUser);
+					} else if (validateRes && validateRes.status === 'missing') {
+						// 存在缺失，展示弹窗
+						this.validateResult = {
+							status: validateRes.status,
+							message: validateRes.message || '部分教师工号或学生学号在数据库中不存在',
+							missingTeacherIds: validateRes.missing_teacher_ids || [],
+							missingStudentIds: validateRes.missing_student_ids || [],
+							uploadedFile: validateRes.uploaded_file || this.selectedImportFile.name,
+							fileFormat: validateRes.file_format || ''
+						};
+						this.showValidateModal = true;
+					} else {
+						// 未知响应，直接尝试导入
+						await this.doImportGroupRelations(currentUser);
+					}
+				} catch (error) {
+					uni.hideLoading();
+					console.error('验证失败:', error);
+					// 验证接口失败，降级为直接导入
+					uni.showToast({
+						title: '验证接口异常，将直接尝试导入',
+						icon: 'none',
+						duration: 2000
+					});
+					const adminInfo = await this.getOrCreateAdmin();
+					const currentUser = {
+						sub: String(adminInfo.id),
+						roles: ['admin'],
+						username: String(adminInfo.username)
+					};
+					await this.doImportGroupRelations(currentUser);
+				}
+			},
+			
+			// 执行实际的批量导入（从验证弹窗或 submitImport 直接调用）
+			async doImportGroupRelations(currentUser) {
 				this.importResult = {
 					show: false,
 					total: 0,
@@ -4019,14 +4133,6 @@
 				};
 				
 				try {
-					// 获取管理员信息，使用系统管理员角色
-					const adminInfo = await this.getOrCreateAdmin();
-					const currentUser = {
-						sub: String(adminInfo.id),
-						roles: ['admin'],  // 使用 admin 角色确保有批量导入权限
-						username: String(adminInfo.username)
-					};
-					
 					console.log('导入使用的管理员身份:', currentUser);
 					
 					// 调用导入接口
@@ -4116,6 +4222,23 @@
 					};
 				}
 				// 搜索逻辑已在computed中实现
+			},
+			
+			// 关闭验证弹窗
+			closeValidateModal() {
+				this.showValidateModal = false;
+			},
+			
+			// 验证弹窗中点击"继续导入"
+			async confirmImportWithMissing() {
+				this.showValidateModal = false;
+				const adminInfo = await this.getOrCreateAdmin();
+				const currentUser = {
+					sub: String(adminInfo.id),
+					roles: ['admin'],
+					username: String(adminInfo.username)
+				};
+				await this.doImportGroupRelations(currentUser);
 			},
 			editUserPermission(user) {
 				this.permissionUser = {
@@ -11243,6 +11366,204 @@
 		margin-top: 8rpx;
 		display: block;
 		line-height: 1.4;
+	}
+	
+	/* 师生信息验证弹窗 */
+	.validate-modal-mask {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.45);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 40rpx;
+	}
+	
+	.validate-modal-content {
+		background: #fff;
+		border-radius: 24rpx;
+		width: 100%;
+		max-width: 640rpx;
+		max-height: 85vh;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.15);
+		overflow: hidden;
+	}
+	
+	.validate-modal-header {
+		display: flex;
+		align-items: center;
+		gap: 20rpx;
+		padding: 32rpx 36rpx 24rpx;
+		border-bottom: 1rpx solid #f1f5f9;
+	}
+	
+	.validate-modal-header-icon {
+		width: 72rpx;
+		height: 72rpx;
+		border-radius: 50%;
+		background: rgba(245, 158, 11, 0.12);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	
+	.validate-modal-header-icon .material-symbols-outlined {
+		font-size: 36rpx;
+		color: #d97706;
+	}
+	
+	.validate-modal-header-text {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6rpx;
+	}
+	
+	.validate-modal-title {
+		font-size: 32rpx;
+		font-weight: 700;
+		color: #0f172a;
+	}
+	
+	.validate-modal-subtitle {
+		font-size: 26rpx;
+		color: #64748b;
+		line-height: 1.4;
+	}
+	
+	.validate-modal-close {
+		width: 56rpx;
+		height: 56rpx;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	
+	.validate-modal-close:active {
+		background: #f1f5f9;
+	}
+	
+	.validate-modal-close .material-symbols-outlined {
+		font-size: 28rpx;
+		color: #94a3b8;
+	}
+	
+	.validate-modal-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: 28rpx 36rpx;
+		display: flex;
+		flex-direction: column;
+		gap: 24rpx;
+	}
+	
+	.validate-section {
+		display: flex;
+		flex-direction: column;
+		gap: 14rpx;
+	}
+	
+	.validate-section-title {
+		display: flex;
+		align-items: center;
+		gap: 10rpx;
+		font-size: 28rpx;
+		font-weight: 600;
+		color: #334155;
+	}
+	
+	.validate-section-icon {
+		font-size: 28rpx;
+		color: #64748b;
+	}
+	
+	.validate-id-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12rpx;
+	}
+	
+	.validate-id-tag {
+		font-size: 24rpx;
+		color: #475569;
+		background: #f1f5f9;
+		border: 1rpx solid #e2e8f0;
+		border-radius: 8rpx;
+		padding: 8rpx 16rpx;
+		line-height: 1.4;
+		font-family: 'SF Mono', Monaco, monospace;
+	}
+	
+	.validate-modal-hint {
+		display: flex;
+		align-items: center;
+		gap: 10rpx;
+		padding: 20rpx 24rpx;
+		background: rgba(59, 130, 246, 0.06);
+		border-radius: 14rpx;
+		font-size: 26rpx;
+		color: #005bbf;
+		margin-top: 8rpx;
+	}
+	
+	.validate-hint-icon {
+		font-size: 28rpx;
+		color: #005bbf;
+		flex-shrink: 0;
+	}
+	
+	.validate-modal-footer {
+		display: flex;
+		gap: 20rpx;
+		padding: 24rpx 36rpx 36rpx;
+		border-top: 1rpx solid #f1f5f9;
+	}
+	
+	.validate-btn {
+		flex: 1;
+		height: 88rpx;
+		border-radius: 14rpx;
+		font-size: 28rpx;
+		font-weight: 600;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8rpx;
+		border: none;
+		cursor: pointer;
+	}
+	
+	.validate-btn--ghost {
+		background: #f1f5f9;
+		color: #64748b;
+	}
+	
+	.validate-btn--ghost:active {
+		background: #e2e8f0;
+	}
+	
+	.validate-btn--primary {
+		background: #005bbf;
+		color: #fff;
+	}
+	
+	.validate-btn--primary:active {
+		background: #004a9c;
+	}
+	
+	.validate-btn .material-symbols-outlined {
+		font-size: 28rpx;
 	}
 	
 	.admin-dialog-picker {
