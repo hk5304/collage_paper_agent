@@ -1140,7 +1140,7 @@ export default {
     getSinglePaperLimitMessage() {
       const currentPaper = this.getExistingPapers()[0] || null;
       const paperTitle = currentPaper?.title || '当前论文';
-      return `当前账号已存在论文《${paperTitle}》。\n每位学生只能上传一篇论文。\n如需重新上传，请先在当前工作台删除这篇论文，再上传新论文。`;
+      return `当前账号已存在论文《${paperTitle}》，每位学生只能上传一篇论文，如需重新上传，请先在当前工作台删除这篇论文，再上传新论文。`;
     },
 
     showSinglePaperLimitDialog() {
@@ -4659,7 +4659,7 @@ export default {
   align-items: stretch;
   gap: var(--spacing-4);
   padding: var(--spacing-6) var(--spacing-5);
-  text-align: left;
+  text-align: center;
 }
 
 .paper-upload-notice-icon {
@@ -4680,14 +4680,15 @@ export default {
 }
 
 .paper-upload-notice-text {
+  display: block;
   font-size: 1.05rem;
   font-weight: 400;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.25;
-  white-space: pre-line;
+  white-space: normal;
   word-break: break-word;
-  text-align: left;
+  text-align: center;
 }
 
 .paper-upload-notice-modal .btn {
