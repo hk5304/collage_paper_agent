@@ -11375,7 +11375,9 @@
 		left: 0;
 		width: 100%;
 		height: 100%;
-		background: rgba(0, 0, 0, 0.45);
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(8rpx);
+		-webkit-backdrop-filter: blur(8rpx);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -11387,7 +11389,7 @@
 		background: #fff;
 		border-radius: 24rpx;
 		width: 100%;
-		max-width: 640rpx;
+		max-width: 800rpx;
 		max-height: 85vh;
 		display: flex;
 		flex-direction: column;
