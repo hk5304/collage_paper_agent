@@ -420,6 +420,62 @@ export function updatePaperReview(paperId, data) {
   });
 }
 
+/**
+ * 查询论文评分（评阅表）GET /api/v1/papers/{paper_id}/grade
+ * 返回预期示例：
+ * {
+ *   paper_id, topic_meaning, logic, application, analysis, format, total_score,
+ *   reviewed_at, reviewer_id, reviewer_name
+ * }
+ * 注意：接口尚未由后端提供，前端先按此字段约定占位；后端就位后只需替换 URL / 参数名。
+ */
+export function getPaperGrade(paperId) {
+  const userInfo = uni.getStorageSync('userInfo') || {};
+  const currentUser = JSON.stringify({
+    sub: userInfo.id || userInfo.sub || 0,
+    username: userInfo.username || '',
+    roles: ['teacher']
+  });
+  return get(`/api/v1/papers/${paperId}/grade`, { current_user: currentUser });
+}
+
+/**
+ * 提交论文评分（首次创建）POST /api/v1/papers/{paper_id}/grade
+ * data: { topic_meaning, logic, application, analysis, format, total_score }
+ */
+export function submitPaperGrade(paperId, data) {
+  const userInfo = uni.getStorageSync('userInfo') || {};
+  const currentUser = JSON.stringify({
+    sub: userInfo.id || userInfo.sub || 0,
+    username: userInfo.username || '',
+    roles: ['teacher']
+  });
+  return request({
+    url: `/api/v1/papers/${paperId}/grade`,
+    method: 'POST',
+    params: { current_user: currentUser },
+    data: data || {},
+    header: { 'Content-Type': 'application/json' }
+  });
+}
+
+/** 更新论文评分 PUT /api/v1/papers/{paper_id}/grade */
+export function updatePaperGrade(paperId, data) {
+  const userInfo = uni.getStorageSync('userInfo') || {};
+  const currentUser = JSON.stringify({
+    sub: userInfo.id || userInfo.sub || 0,
+    username: userInfo.username || '',
+    roles: ['teacher']
+  });
+  return request({
+    url: `/api/v1/papers/${paperId}/grade`,
+    method: 'PUT',
+    params: { current_user: currentUser },
+    data: data || {},
+    header: { 'Content-Type': 'application/json' }
+  });
+}
+
 /** 标记消息为已读 */
 export function markMessageAsRead(messageId) {
   return put(`/api/v1/message/${messageId}/read`);

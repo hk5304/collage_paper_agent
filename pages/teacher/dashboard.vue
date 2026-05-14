@@ -593,6 +593,18 @@
               <text>查看PDF版</text>
             </button>
             <view class="toolbar-divider" v-if="currentPaper?.pdfOssKey || currentPaper?.pdf_oss_key"></view>
+            <!-- 评分按钮：仅「已定稿」论文显示 -->
+            <template v-if="currentPaper && currentPaper.status === '已定稿'">
+              <button
+                type="button"
+                class="toolbar-btn review-btn"
+                :class="{ 'reviewed': !!getPaperGradeLabel(currentPaper) }"
+                @click.stop.prevent="openGradeModal(currentStudent, currentPaper)">
+                <text class="material-symbols-outlined">grade</text>
+                <text>{{ getPaperGradeLabel(currentPaper) || '评分' }}</text>
+              </button>
+              <view class="toolbar-divider"></view>
+            </template>
             <text class="page-info">{{ currentPageNum }}/{{ docxTotalPages }} 页</text>
             <view class="toolbar-divider"></view>
             <text id="teacher-review-word-count-line" class="word-count">{{ reviewToolbarWordCountText }}</text>
@@ -1063,10 +1075,21 @@
         </view>
       </view>
     </view>
+
+    <!-- 论文评阅评分弹窗（中国计量大学毕业设计论文评阅表） -->
+    <PaperReviewModal
+      :visible="showGradeModal"
+      :paper-id="gradingPaper && (gradingPaper.paperId || gradingPaper.id || gradingPaper.paper_id)"
+      :student="gradingStudent || {}"
+      :paper="gradingPaper || {}"
+      @close="closeGradeModal"
+      @saved="onGradeSaved"
+    />
 </template>
 <script>
 	import DeadlineSetting from "./DeadlineSetting.vue";
 	import PaperDownload from "./PaperDownload.vue";
+	import PaperReviewModal from "@/components/PaperReviewModal.vue";
 
 	// 引入API方法
 	import {
@@ -1085,6 +1108,9 @@
 		submitPaperReview,
 		updatePaperReview,
 		getPaperReview,
+		getPaperGrade,
+		submitPaperGrade,
+		updatePaperGrade,
 		getMessageList,
 		batchDownloadPapers,
 		postAgentAudit,
@@ -1099,7 +1125,8 @@
 	export default {
 		components: {
 			DeadlineSetting,
-			PaperDownload
+			PaperDownload,
+			PaperReviewModal
 		},
 		data() {
 			return {
@@ -1288,7 +1315,13 @@
 				// 定稿确认弹窗
 				showFinalizeConfirmModal: false,
 				finalizeConfirmPaper: null,
-				finalizeConfirmStudent: null
+				finalizeConfirmStudent: null,
+				// ====== 论文评阅评分 ======
+				showGradeModal: false,
+				gradingPaper: null,
+				gradingStudent: null,
+				// 已评分信息：{ [paperId]: { total_score, ... } }，用于按钮文案展示
+				paperGradeMap: {}
 			}
 		},
 		computed: {
@@ -1593,6 +1626,13 @@
 			agentReportIssuesCount() {
 				const p = this.agentReportPayload;
 				if (!p) return null;
+				// 前端按面板实际展示的合并后条数汇总（llm_issues + local_issues），与下方"分段问题"列表保持一致
+				let total = 0;
+				for (const chunk of this.agentChunkReviewsForPanel) {
+					total += this.mergeChunkIssues(chunk).length;
+				}
+				if (total > 0) return total;
+				// 兜底使用上游汇总字段（当面板无明细数据时）
 				if (p.issues_count != null) return p.issues_count;
 				if (p.issuesCount != null) return p.issuesCount;
 				const ar = p.ai_review || p.aiReview;
@@ -1614,7 +1654,7 @@
 			agentIssueTypesAvailable() {
 				const types = new Set();
 				for (const chunk of this.agentChunkReviewsForPanel) {
-					const issues = chunk.issues || chunk.llm_issues || chunk.local_issues || [];
+					const issues = this.mergeChunkIssues(chunk);
 					for (const iss of issues) {
 						const t = iss.issue_type || iss.issueType;
 						if (t) types.add(t.toLowerCase());
@@ -1627,7 +1667,7 @@
 				const all = this.agentChunkReviewsForPanel;
 				if (this.agentIssueTypeFilter === 'all') return all;
 				return all.filter(chunk => {
-					const issues = chunk.issues || chunk.llm_issues || chunk.local_issues || [];
+					const issues = this.mergeChunkIssues(chunk);
 					return issues.some(iss => {
 						const t = (iss.issue_type || iss.issueType || '').toLowerCase();
 						return t === this.agentIssueTypeFilter;
@@ -1743,6 +1783,46 @@
 			};
 		},
 		methods: {
+			// ====== 论文评阅评分 ======
+			openGradeModal(student, paper) {
+				this.gradingStudent = student || null;
+				this.gradingPaper = paper || null;
+				this.showGradeModal = true;
+			},
+			closeGradeModal() {
+				this.showGradeModal = false;
+				this.$nextTick(() => {
+					this.gradingPaper = null;
+					this.gradingStudent = null;
+				});
+			},
+			onGradeSaved(gradeData) {
+				if (!gradeData) return;
+				const pid = gradeData.paperId;
+				if (pid === undefined || pid === null) return;
+				// 写入映射，触发按钮文案更新
+				this.paperGradeMap = { ...this.paperGradeMap, [String(pid)]: gradeData };
+			},
+			getPaperGradeLabel(paper) {
+				if (!paper) return '';
+				const pid = paper.paperId || paper.id || paper.paper_id;
+				if (pid === undefined || pid === null) return '';
+				const key = String(pid);
+				// 1) 优先内存缓存
+				let grade = this.paperGradeMap[key];
+				// 2) 其次本地暂存（接口未就绪时的回退存储）
+				if (!grade) {
+					try {
+						const local = uni.getStorageSync(`paper_grade_${key}`);
+						if (local && (local.total_score !== undefined)) grade = local;
+					} catch (e) {}
+				}
+				if (!grade) return '';
+				const total = grade.total_score;
+				if (total === undefined || total === null || total === '') return '';
+				const text = Number.isInteger(Number(total)) ? Number(total) : Number(total).toFixed(1);
+				return `已评分 ${text}/100`;
+			},
 			onAvatarError(e) {
 				// 头像加载失败时，使用默认图标
 				const img = e.target || e.detail.target;
@@ -2514,22 +2594,44 @@
 			},
 			agentChunkIssueCount(chunk) {
 				if (!chunk) return 0;
-				if (chunk.issue_count != null) return Number(chunk.issue_count);
-				const arr = chunk.issues || chunk.llm_issues || chunk.local_issues || [];
-				return Array.isArray(arr) ? arr.length : 0;
+				// 与 agentChunkIssuesPreview 一致：按合并后的真实条数计数
+				return this.mergeChunkIssues(chunk).length;
 			},
 			agentChunkIssuesPreview(chunk) {
 				if (!chunk) return [];
-				const a = chunk.issues || chunk.llm_issues;
-				const raw = (Array.isArray(a) && a.length > 0) ? a : (Array.isArray(chunk.local_issues) ? chunk.local_issues : []);
+				const merged = this.mergeChunkIssues(chunk);
 				// 应用类型筛选
 				if (this.agentIssueTypeFilter && this.agentIssueTypeFilter !== 'all') {
-					return raw.filter(iss => {
+					return merged.filter(iss => {
 						const t = (iss.issue_type || iss.issueType || '').toLowerCase();
 						return t === this.agentIssueTypeFilter;
 					});
 				}
-				return raw;
+				return merged;
+			},
+			// 合并 llm_issues 与 local_issues（含 chunk.issues 兜底），按 issue_type+message+suggestion 去重
+			mergeChunkIssues(chunk) {
+				if (!chunk) return [];
+				const buckets = [];
+				if (Array.isArray(chunk.issues)) buckets.push(chunk.issues);
+				if (Array.isArray(chunk.llm_issues)) buckets.push(chunk.llm_issues);
+				if (Array.isArray(chunk.local_issues)) buckets.push(chunk.local_issues);
+				if (buckets.length === 0) return [];
+				const seen = new Set();
+				const result = [];
+				for (const arr of buckets) {
+					for (const iss of arr) {
+						if (!iss) continue;
+						const t = (iss.issue_type || iss.issueType || '').toLowerCase();
+						const m = iss.message || iss.msg || '';
+						const s = iss.suggestion || '';
+						const key = t + '|' + m + '|' + s;
+						if (seen.has(key)) continue;
+						seen.add(key);
+						result.push(iss);
+					}
+				}
+				return result;
 			},
 			/**
 			 * 《JSON返回数据类型说明》§3.2：parse_result.data.sections[].id 与 chunk_reviews[].section_id 对应；
@@ -9099,6 +9201,27 @@
 }
 
 .toolbar-btn.finalize-toolbar-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* 审阅工具栏评分按钮：未评分为琥珀色，已评分为深绿填充 */
+.toolbar-btn.review-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.35);
+}
+.toolbar-btn.review-btn:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #fff;
+}
+.toolbar-btn.review-btn.reviewed {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 1px 3px rgba(5, 150, 105, 0.35);
+}
+.toolbar-btn.review-btn.reviewed:hover {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+}
+.toolbar-btn.review-btn .material-symbols-outlined {
   font-size: 18px;
 }
 
