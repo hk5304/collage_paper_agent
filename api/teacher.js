@@ -421,27 +421,66 @@ export function updatePaperReview(paperId, data) {
 }
 
 /**
- * 查询论文评分（评阅表）GET /api/v1/papers/{paper_id}/grade
- * 返回预期示例：
- * {
- *   paper_id, topic_meaning, logic, application, analysis, format, total_score,
- *   reviewed_at, reviewer_id, reviewer_name
- * }
- * 注意：接口尚未由后端提供，前端先按此字段约定占位；后端就位后只需替换 URL / 参数名。
+ * 查询教师论文评分 GET /api/v1/papers/teacher-score
+ * 入参：paper_id（推荐）或 student_id 二选一，全部走 query string
+ * 返回字段（约定）：
+ *   paper_id, student_id,
+ *   topic_significance_score, logical_ability_score, knowledge_application_score,
+ *   problem_analysis_solution_score, academic_norm_score, total_score
  */
-export function getPaperGrade(paperId) {
+export function getPaperGrade(paperId, opts = {}) {
   const userInfo = uni.getStorageSync('userInfo') || {};
   const currentUser = JSON.stringify({
     sub: userInfo.id || userInfo.sub || 0,
     username: userInfo.username || '',
     roles: ['teacher']
   });
-  return get(`/api/v1/papers/${paperId}/grade`, { current_user: currentUser });
+  const query = { current_user: currentUser };
+  if (paperId !== undefined && paperId !== null && paperId !== '') {
+    query.paper_id = paperId;
+  } else if (opts && opts.studentId) {
+    query.student_id = opts.studentId;
+  }
+  return get('/api/v1/papers/teacher-score', query);
 }
 
 /**
- * 提交论文评分（首次创建）POST /api/v1/papers/{paper_id}/grade
- * data: { topic_meaning, logic, application, analysis, format, total_score }
+ * 获取学生论文基础信息 GET /api/v1/papers/student/basic-info
+ * 入参：paper_id（query string）
+ * 返回字段（约定）：college, teacher_name, student_name, student_no, class_name, title 等
+ */
+export function getStudentBasicInfo(paperId) {
+  const userInfo = uni.getStorageSync('userInfo') || {};
+  const currentUser = JSON.stringify({
+    sub: userInfo.id || userInfo.sub || 0,
+    username: userInfo.username || '',
+    roles: ['teacher']
+  });
+  const query = { current_user: currentUser, paper_id: paperId };
+  return get('/api/v1/papers/student-basic-info', query);
+}
+
+/**
+ * 下载评阅表 DOCX GET /api/v1/papers/review-table-download
+ * 入参：paper_id（query string）
+ * 返回：下载地址 URL
+ */
+export function downloadReviewTable(paperId) {
+  return request({
+    url: '/api/v1/papers/review-table-download',
+    method: 'GET',
+    params: { paper_id: paperId },
+    responseType: 'arraybuffer',
+    timeout: 120000,
+    needAuth: false
+  });
+}
+
+/**
+ * 提交/更新教师论文评分 POST /api/v1/papers/teacher-score
+ * 所有参数通过 query string 传递（接口规范要求）
+ * data 字段：topic_significance_score, logical_ability_score,
+ *           knowledge_application_score, problem_analysis_solution_score, academic_norm_score
  */
 export function submitPaperGrade(paperId, data) {
   const userInfo = uni.getStorageSync('userInfo') || {};
@@ -450,30 +489,29 @@ export function submitPaperGrade(paperId, data) {
     username: userInfo.username || '',
     roles: ['teacher']
   });
+  const safeData = data || {};
   return request({
-    url: `/api/v1/papers/${paperId}/grade`,
+    url: '/api/v1/papers/teacher-score',
     method: 'POST',
-    params: { current_user: currentUser },
-    data: data || {},
+    params: {
+      current_user: currentUser,
+      paper_id: paperId,
+      topic_significance_score: safeData.topic_significance_score,
+      logical_ability_score: safeData.logical_ability_score,
+      knowledge_application_score: safeData.knowledge_application_score,
+      problem_analysis_solution_score: safeData.problem_analysis_solution_score,
+      academic_norm_score: safeData.academic_norm_score
+    },
     header: { 'Content-Type': 'application/json' }
   });
 }
 
-/** 更新论文评分 PUT /api/v1/papers/{paper_id}/grade */
+/**
+ * 更新论文评分（接口规范中 POST 已支持覆盖式保存，复用 submitPaperGrade）
+ * 保留方法签名以兼容原有调用方
+ */
 export function updatePaperGrade(paperId, data) {
-  const userInfo = uni.getStorageSync('userInfo') || {};
-  const currentUser = JSON.stringify({
-    sub: userInfo.id || userInfo.sub || 0,
-    username: userInfo.username || '',
-    roles: ['teacher']
-  });
-  return request({
-    url: `/api/v1/papers/${paperId}/grade`,
-    method: 'PUT',
-    params: { current_user: currentUser },
-    data: data || {},
-    header: { 'Content-Type': 'application/json' }
-  });
+  return submitPaperGrade(paperId, data);
 }
 
 /** 标记消息为已读 */

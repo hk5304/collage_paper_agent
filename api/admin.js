@@ -338,22 +338,107 @@ export function queryAllUsers(params = {}, currentUser = null) {
   });
 }
 
-/** 批量导入用户 POST /api/v1/users/import */
+/** 批量导入用户 POST /api/v1/users/import_cjlu_info
+ *  说明：后端接口已迁移至中国计量大学信息工程学院专用导入端点
+ *  multipart/form-data，仅 file 字段；学生用学号、教师用 "t"+工号 作为用户名，密码默认 123456
+ */
 export function importUsers(file, currentUser = null) {
   return new Promise((resolve, reject) => {
-    // 构建 URL
-    let url = config.baseURL + '/api/v1/users/import';
-    
+    const url = config.baseURL + '/api/v1/users/import_cjlu_info';
     const formData = new FormData();
     formData.append('file', file);
-    
     fetch(url, {
       method: 'POST',
       body: formData
     })
-    .then(response => response.json())
-    .then(data => resolve(data))
-    .catch(error => reject(error));
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const msg =
+            (typeof data.msg === 'string' && data.msg) ||
+            (typeof data.message === 'string' && data.message) ||
+            (typeof data.detail === 'string' && data.detail) ||
+            (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) ||
+            `请求失败 ${response.status}`;
+          const err = new Error(msg);
+          err.data = data;
+          throw err;
+        }
+        return data;
+      })
+      .then((data) => resolve(data))
+      .catch((error) => reject(error));
+  });
+}
+
+/**
+ * 中国计量大学信息工程学院专用 一键导入学生与教师账号
+ * POST /api/v1/users/import/cjlu-info
+ * multipart/form-data，仅 file 字段，无 query 参数
+ * 学生：学号作为用户名，姓名作全名，密码默认 123456
+ * 教师：指导教师工号前加 "t" 作为用户名，姓名作全名，密码默认 123456
+ */
+export function importUsersCjluInfo(file) {
+  return new Promise((resolve, reject) => {
+    const url = config.baseURL + '/api/v1/users/import/cjlu-info';
+    const formData = new FormData();
+    formData.append('file', file);
+    fetch(url, {
+      method: 'POST',
+      body: formData
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const msg =
+            (typeof data.msg === 'string' && data.msg) ||
+            (typeof data.message === 'string' && data.message) ||
+            (typeof data.detail === 'string' && data.detail) ||
+            (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) ||
+            `请求失败 ${response.status}`;
+          const err = new Error(msg);
+          err.data = data;
+          throw err;
+        }
+        return data;
+      })
+      .then((data) => resolve(data))
+      .catch((error) => reject(error));
+  });
+}
+
+/**
+ * 导入论文基础信息
+ * POST /api/v1/papers/basic-info/import
+ * multipart/form-data，仅 file 字段，无 query 参数
+ * 文件可与师生关系导入复用同一份 xlsx，后端按列映射提取
+ */
+export function importPapersBasicInfo(file) {
+  return new Promise((resolve, reject) => {
+    const url = config.baseURL + '/api/v1/papers/basic-info/import';
+    const formData = new FormData();
+    formData.append('file', file);
+    fetch(url, {
+      method: 'POST',
+      body: formData
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const msg =
+            (typeof data.msg === 'string' && data.msg) ||
+            (typeof data.message === 'string' && data.message) ||
+            (typeof data.detail === 'string' && data.detail) ||
+            (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) ||
+            `请求失败 ${response.status}`;
+          const err = new Error(msg);
+          err.data = data;
+          throw err;
+        }
+        return data;
+      })
+      .then((data) => resolve(data))
+      .catch((error) => reject(error));
   });
 }
 

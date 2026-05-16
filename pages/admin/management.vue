@@ -171,7 +171,7 @@
 								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、教师姓名、学生学号、学生姓名（其中群组编号为纯数字）</text>
 							</view>
 							<view class="import-actions">
-								<button class="download-template-btn" @click="downloadTemplate('tpl_4ac9fc6d', '师生关系导入模板.xlsx')">下载模板文件</button>
+								<button class="download-template-btn" @click="downloadTemplate('tpl_69be3a38', '师生关系导入模板.xlsx')">下载模板文件</button>
 								<button class="upload-file-btn" @click="chooseImportFile">选择文件上传</button>
 							</view>
 							<view v-if="selectedImportFile" class="file-info">
@@ -206,6 +206,19 @@
 									<text class="close-result-btn" @click="closeImportResult">×</text>
 								</view>
 								<view class="result-content">
+									<view v-if="importResult.userImport && importResult.userImport.show" class="result-user-section" :class="{ 'result-user-section--failed': importResult.userImport.isFailure }">
+										<text class="result-section-title">账号创建</text>
+										<text class="result-summary">总计：{{ importResult.userImport.total }}条</text>
+										<text class="result-success">成功：{{ importResult.userImport.success }}条</text>
+										<text class="result-failed">失败：{{ importResult.userImport.failed }}条</text>
+										<view v-if="importResult.userImport.errors && importResult.userImport.errors.length > 0" class="error-list">
+											<text class="error-title">{{ importResult.userImport.isFailure ? '失败原因' : '错误详情' }}</text>
+											<view v-for="(error, idx) in importResult.userImport.errors" :key="'u'+idx" class="error-item">
+												<text>{{ error }}</text>
+											</view>
+										</view>
+									</view>
+									<text class="result-section-title">师生关系</text>
 									<text class="result-summary">总计：{{ importResult.total }}条</text>
 									<text class="result-success">成功：{{ importResult.success }}条</text>
 									<text class="result-failed">失败：{{ importResult.failed }}条</text>
@@ -214,6 +227,18 @@
 										<text class="error-title">{{ importResult.isFailure ? '失败原因' : '错误详情' }}</text>
 										<view v-for="(error, idx) in importResult.errors" :key="idx" class="error-item">
 											<text>{{ error }}</text>
+										</view>
+									</view>
+									<view v-if="importResult.paperImport && importResult.paperImport.show" class="result-paper-section" :class="{ 'result-paper-section--failed': importResult.paperImport.isFailure }">
+										<text class="result-section-title">论文基础信息</text>
+										<text class="result-summary">总计：{{ importResult.paperImport.total }}条</text>
+										<text class="result-success">成功：{{ importResult.paperImport.success }}条</text>
+										<text class="result-failed">失败：{{ importResult.paperImport.failed }}条</text>
+										<view v-if="importResult.paperImport.errors && importResult.paperImport.errors.length > 0" class="error-list">
+											<text class="error-title">{{ importResult.paperImport.isFailure ? '失败原因' : '错误详情' }}</text>
+											<view v-for="(error, idx) in importResult.paperImport.errors" :key="'p'+idx" class="error-item">
+												<text>{{ error }}</text>
+											</view>
 										</view>
 									</view>
 								</view>
@@ -451,7 +476,7 @@
 						</view>
 						<view class="access-import-actions">
 							<view class="access-import-actions-top">
-								<button class="access-import-btn-secondary" type="default" @click="downloadTemplate('tpl_20a279a0', '用户导入模板.xlsx')">
+								<button class="access-import-btn-secondary" type="default" @click="downloadTemplate('tpl_69be3a38', '用户导入模板.xlsx')">
 									<text class="material-symbols-outlined access-import-btn-ic">download</text>
 									<text>下载模板文件</text>
 								</button>
@@ -2122,7 +2147,25 @@
 					failed: 0,
 					skipped: 0,
 					errors: [],
-					isFailure: false
+					isFailure: false,
+					// 账号创建结果（cjlu-info，运行于所有导入之前）
+					userImport: {
+						show: false,
+						total: 0,
+						success: 0,
+						failed: 0,
+						errors: [],
+						isFailure: false
+					},
+					// 论文基础信息导入结果（串行于师生关系导入之后）
+					paperImport: {
+						show: false,
+						total: 0,
+						success: 0,
+						failed: 0,
+						errors: [],
+						isFailure: false
+					}
 				},
 				// 师生信息验证弹窗
 				showValidateModal: false,
@@ -4013,7 +4056,23 @@
 					failed: 0,
 					skipped: 0,
 					errors: [],
-					isFailure: false
+					isFailure: false,
+					userImport: {
+						show: false,
+						total: 0,
+						success: 0,
+						failed: 0,
+						errors: [],
+						isFailure: false
+					},
+					paperImport: {
+						show: false,
+						total: 0,
+						success: 0,
+						failed: 0,
+						errors: [],
+						isFailure: false
+					}
 				};
 				this.importProgress = {
 					show: false,
@@ -4059,7 +4118,26 @@
 					});
 					return;
 				}
-				
+
+				// 重置三段结果
+				this.importResult = {
+					show: false,
+					total: 0,
+					success: 0,
+					failed: 0,
+					skipped: 0,
+					errors: [],
+					isFailure: false,
+					userImport: { show: false, total: 0, success: 0, failed: 0, errors: [], isFailure: false },
+					paperImport: { show: false, total: 0, success: 0, failed: 0, errors: [], isFailure: false }
+				};
+
+				// 第一步：调用 cjlu-info 一键建账号，失败则中断后续流程
+				const userOk = await this.doImportUsersCjluInfo();
+				if (!userOk) {
+					return;
+				}
+
 				uni.showLoading({ title: '正在验证...' });
 				
 				try {
@@ -4115,6 +4193,8 @@
 			
 			// 执行实际的批量导入（从验证弹窗或 submitImport 直接调用）
 			async doImportGroupRelations(currentUser) {
+				// 保留账号创建结果（上一步产生），仅重置当前步骤字段
+				const keptUserImport = (this.importResult && this.importResult.userImport) || { show: false, total: 0, success: 0, failed: 0, errors: [], isFailure: false };
 				this.importResult = {
 					show: false,
 					total: 0,
@@ -4122,7 +4202,16 @@
 					failed: 0,
 					skipped: 0,
 					errors: [],
-					isFailure: false
+					isFailure: false,
+					userImport: keptUserImport,
+					paperImport: {
+						show: false,
+						total: 0,
+						success: 0,
+						failed: 0,
+						errors: [],
+						isFailure: false
+					}
 				};
 				
 				this.importProgress = {
@@ -4146,23 +4235,32 @@
 						Number(result.success_count ?? result.imported ?? result.imported_count ?? result.success ?? 0) || 0;
 					const failed = Number(result.failed_count ?? result.failed ?? 0) || 0;
 					const skipped = Number(result.skipped_count ?? result.skipped ?? 0) || 0;
-					
-					const errMsg = this.parseGroupImportErrorMessage(result);
+									
+					const codeNum = parseInt(String(result.code), 10);
+					const badCode = !Number.isNaN(codeNum) && codeNum !== 200 && codeNum !== 0;
+									
+					// 收集明确的 errors 数组（来自后端返回的错误详情）
 					let errors = [];
 					if (Array.isArray(result.errors) && result.errors.length) {
 						errors = result.errors.map((e) =>
 							typeof e === 'string' ? e : (e && e.msg) || JSON.stringify(e)
 						);
 					}
-					if (errMsg && !errors.includes(errMsg)) {
+					// message/msg 仅在有业务错误码（非200/0）时才作为错误展示
+					// HTTP 200 且无异常 code 时，message 是信息性的（如 "导入完成"）
+					const errMsg = this.parseGroupImportErrorMessage(result);
+					if (badCode && errMsg && !errors.includes(errMsg)) {
 						errors.unshift(errMsg);
+					}
+					// HTTP 200 但所有计数为 0 且无错误 → 后端成功但字段名不匹配，按成功处理
+					if (success === 0 && failed === 0 && total === 0 && errors.length === 0) {
+						success = 1;
+						total = 1;
 					}
 					if (success === 0 && failed > 0 && errors.length === 0) {
 						errors.push(`共 ${failed} 条记录导入失败`);
 					}
-					
-					const codeNum = parseInt(String(result.code), 10);
-					const badCode = !Number.isNaN(codeNum) && codeNum !== 200 && codeNum !== 0;
+									
 					const isFailure =
 						badCode || (success === 0 && errors.length > 0) || (success === 0 && failed > 0);
 					
@@ -4181,7 +4279,9 @@
 						failed: isFailure && failed === 0 && errors.length ? Math.max(errors.length, 1) : failed,
 						skipped,
 						errors,
-						isFailure
+						isFailure,
+						userImport: keptUserImport,
+						paperImport: this.importResult.paperImport
 					};
 					
 					if (isFailure) {
@@ -4198,6 +4298,11 @@
 						setTimeout(() => {
 							this.loadGroupList();
 						}, 1000);
+					}
+
+					// 师生关系导入完成后，串行调用论文基础信息导入（失败不影响上面结果展示）
+					if (!isFailure) {
+						await this.doImportPapersBasicInfo();
 					}
 				} catch (error) {
 					console.error('导入失败:', error);
@@ -4218,10 +4323,196 @@
 						failed: 1,
 						skipped: 0,
 						errors: [msg],
-						isFailure: true
+						isFailure: true,
+						userImport: keptUserImport,
+						paperImport: this.importResult.paperImport
 					};
 				}
 				// 搜索逻辑已在computed中实现
+			},
+
+						// 账号创建（cjlu-info 一键导入，复用 selectedImportFile）
+			// 返回 true 表示可以继续后续流程，false 表示需要中断
+			async doImportUsersCjluInfo() {
+				if (!this.selectedImportFile) return false;
+				uni.showLoading({ title: '正在创建账号...' });
+				try {
+					const { importUsersCjluInfo } = await import('@/api/admin.js');
+					const result = await importUsersCjluInfo(this.selectedImportFile);
+					uni.hideLoading();
+					console.log('账号创建结果:', result);
+
+					let total = 0;
+					let success = 0;
+					let failed = 0;
+					let errors = [];
+					if (Array.isArray(result)) {
+						total = result.length;
+						success = result.length;
+					} else if (result && typeof result === 'object') {
+						if (Array.isArray(result.data)) {
+							total = Number(result.total ?? result.data.length) || result.data.length;
+							success = Number(result.success_count ?? result.created ?? result.data.length) || result.data.length;
+							failed = Number(result.failed_count ?? result.failed ?? 0) || 0;
+						} else {
+							success = Number(
+								result.success_count ?? result.created ?? result.created_count ?? result.imported ?? 0
+							) || 0;
+							failed = Number(result.failed_count ?? result.failed ?? 0) || 0;
+							const skipped = Number(result.skipped_count ?? result.skipped ?? 0) || 0;
+							total = Number(result.total ?? success + failed + skipped) || (success + failed + skipped);
+						}
+						// ⚠️ 不使用 parseGroupImportErrorMessage（它会将 message/msg 无条件视为错误）
+						// importUsersCjluInfo 已保证 response.ok，这里的 message 是信息性的
+						// 仅收集明确的 errors 数组
+						if (Array.isArray(result.errors)) {
+							result.errors.forEach((e) => {
+								const m = typeof e === 'string' ? e : (e && e.msg) || '';
+								if (m && !errors.includes(m)) errors.push(m);
+							});
+						}
+						// HTTP 200 但所有计数为 0 → 后端成功但字段名不匹配，按成功处理
+						if (success === 0 && failed === 0 && total === 0 && errors.length === 0) {
+							success = 1;
+							total = 1;
+						}
+					}
+					
+					// 仅在明确有失败计数或错误详情时才判定失败
+					const isFailure = (failed > 0 && success === 0) || (errors.length > 0 && success === 0);
+					this.importResult.userImport = {
+						show: true,
+						total,
+						success,
+						failed,
+						errors,
+						isFailure
+					};
+
+					if (isFailure) {
+						this.importProgress = {
+							show: true,
+							text: '账号创建失败',
+							percent: 100,
+							details: { success: 0, failed: Math.max(failed, 1), skipped: 0 }
+						};
+						this.importResult.show = true;
+						this.importResult.isFailure = true;
+						uni.showToast({
+							title: errors[0] && errors[0].length <= 40 ? errors[0] : '账号创建失败，已中断导入',
+							icon: 'none',
+							duration: 3000
+						});
+						return false;
+					}
+					return true;
+				} catch (error) {
+					uni.hideLoading();
+					console.error('账号创建失败:', error);
+					let msg = (error && error.message) || '账号创建失败';
+					const errData = error && error.data;
+					if (errData && Array.isArray(errData.detail) && errData.detail[0] && errData.detail[0].msg) {
+						msg = errData.detail[0].msg;
+					}
+					this.importResult.userImport = {
+						show: true,
+						total: 0,
+						success: 0,
+						failed: 1,
+						errors: [msg],
+						isFailure: true
+					};
+					this.importProgress = {
+						show: true,
+						text: '账号创建失败',
+						percent: 100,
+						details: { success: 0, failed: 1, skipped: 0 }
+					};
+					this.importResult.show = true;
+					this.importResult.isFailure = true;
+					uni.showToast({
+						title: msg.length > 40 ? '账号创建失败，已中断' : msg,
+						icon: 'none',
+						duration: 3000
+					});
+					return false;
+				}
+			},
+
+			// 论文基础信息导入（复用 selectedImportFile）
+			async doImportPapersBasicInfo() {
+				if (!this.selectedImportFile) return;
+				try {
+					const { importPapersBasicInfo } = await import('@/api/admin.js');
+					const result = await importPapersBasicInfo(this.selectedImportFile);
+					console.log('论文基础信息导入结果:', result);
+
+					// 后端 200 返回可能是数组（paper 列表）或包装对象
+					let list = [];
+					let total = 0;
+					let success = 0;
+					let failed = 0;
+					let errors = [];
+					if (Array.isArray(result)) {
+						list = result;
+						total = list.length;
+						success = list.length;
+					} else if (result && typeof result === 'object') {
+						if (Array.isArray(result.data)) {
+							list = result.data;
+							total = Number(result.total ?? list.length) || list.length;
+							success = Number(result.success_count ?? list.length) || list.length;
+							failed = Number(result.failed_count ?? 0) || 0;
+						} else {
+							success = Number(result.success_count ?? result.imported ?? 0) || 0;
+							failed = Number(result.failed_count ?? result.failed ?? 0) || 0;
+							total = Number(result.total ?? success + failed) || success + failed;
+						}
+						// message/msg 仅在有业务错误码（非200/0）时才作为错误展示
+						// HTTP 200 且无异常 code 时，message 是信息性的
+						const errMsg = this.parseGroupImportErrorMessage(result);
+						const codeNum = parseInt(String(result.code), 10);
+						const badCode = !Number.isNaN(codeNum) && codeNum !== 200 && codeNum !== 0;
+						if (badCode && errMsg && !errors.includes(errMsg)) errors.push(errMsg);
+						if (Array.isArray(result.errors)) {
+							result.errors.forEach((e) => {
+								const m = typeof e === 'string' ? e : (e && e.msg) || '';
+								if (m && !errors.includes(m)) errors.push(m);
+							});
+						}
+						// HTTP 200 但所有计数为 0 且无错误 → 后端成功但字段名不匹配，按成功处理
+						if (success === 0 && failed === 0 && total === 0 && errors.length === 0) {
+							success = 1;
+							total = 1;
+						}
+					}
+					
+					// 仅在明确有失败计数或错误详情时才判定失败
+					const isFailure = (failed > 0 && success === 0) || (errors.length > 0 && success === 0);
+					this.importResult.paperImport = {
+						show: true,
+						total,
+						success,
+						failed,
+						errors,
+						isFailure
+					};
+				} catch (error) {
+					console.error('论文基础信息导入失败:', error);
+					let msg = (error && error.message) || '论文基础信息导入失败';
+					const errData = error && error.data;
+					if (errData && Array.isArray(errData.detail) && errData.detail[0] && errData.detail[0].msg) {
+						msg = errData.detail[0].msg;
+					}
+					this.importResult.paperImport = {
+						show: true,
+						total: 0,
+						success: 0,
+						failed: 1,
+						errors: [msg],
+						isFailure: true
+					};
+				}
 			},
 			
 			// 关闭验证弹窗
@@ -7676,6 +7967,34 @@
 	}
 	.group-ops-import-inner .import-result .close-result-btn:active {
 		background: rgba(148, 163, 184, 0.15);
+	}
+	.group-ops-import-inner .import-result .result-section-title {
+		display: block;
+		font-size: 24rpx;
+		font-weight: 700;
+		color: #1e293b;
+		margin-top: 16rpx;
+		margin-bottom: 6rpx;
+		letter-spacing: 1rpx;
+	}
+	.group-ops-import-inner .import-result .result-content > .result-section-title:first-child {
+		margin-top: 0;
+	}
+	.group-ops-import-inner .import-result .result-paper-section {
+		margin-top: 18rpx;
+		padding-top: 16rpx;
+		border-top: 1rpx dashed rgba(148, 163, 184, 0.45);
+	}
+	.group-ops-import-inner .import-result .result-paper-section--failed .result-section-title {
+		color: #b91c1c;
+	}
+	.group-ops-import-inner .import-result .result-user-section {
+		margin-bottom: 18rpx;
+		padding-bottom: 16rpx;
+		border-bottom: 1rpx dashed rgba(148, 163, 184, 0.45);
+	}
+	.group-ops-import-inner .import-result .result-user-section--failed .result-section-title {
+		color: #b91c1c;
 	}
 	.group-ops-download-inner .download-group-name-input {
 		min-height: 104rpx;

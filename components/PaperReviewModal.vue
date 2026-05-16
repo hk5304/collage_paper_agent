@@ -222,10 +222,10 @@
 				<button
 					v-if="previewMode"
 					class="btn btn-primary"
-					@click="handleDownloadPdf"
+					@click="handleDownloadDocx"
 				>
-					<text class="material-symbols-outlined" style="font-size: 30rpx; margin-right: 6rpx;">picture_as_pdf</text>
-					<text>下载 PDF</text>
+					<text class="material-symbols-outlined" style="font-size: 30rpx; margin-right: 6rpx;">description</text>
+					<text>下载 DOCX</text>
 				</button>
 				<button
 					v-else
@@ -242,7 +242,16 @@
 </template>
 
 <script>
-import { getPaperGrade, submitPaperGrade, updatePaperGrade } from '@/api/teacher.js';
+import { getPaperGrade, getStudentBasicInfo, submitPaperGrade, updatePaperGrade, downloadReviewTable } from '@/api/teacher.js';
+
+// 前端内部字段 → 后端接口字段 映射
+const FIELD_MAP = {
+	topic_meaning: 'topic_significance_score',
+	logic: 'logical_ability_score',
+	application: 'knowledge_application_score',
+	analysis: 'problem_analysis_solution_score',
+	format: 'academic_norm_score'
+};
 
 const ITEMS = [
 	{ key: 'topic_meaning', lv1: '选题意义', lv2: '选题目的和意义', max: 10,
@@ -288,28 +297,28 @@ export default {
 			loading: false,
 			previewMode: false,
 			a4Scale: 1,
-			_a4ResizeHandler: null
+			_a4ResizeHandler: null,
+			basicInfo: null
 		};
 	},
 	computed: {
 		displayCollege() {
-			return this.student?.college || this.paper?.college || this.student?.department || '';
+			return this.basicInfo?.college || this.student?.college || this.paper?.college || this.student?.department || '';
 		},
 		displayTeacher() {
-			const userInfo = uni.getStorageSync('userInfo') || {};
-			return this.paper?.teacher_name || this.student?.teacher_name || userInfo?.name || userInfo?.username || '';
+			return this.basicInfo?.teacher_name || this.paper?.teacher_name || this.student?.teacher_name || '';
 		},
 		displayName() {
-			return this.student?.name || this.student?.student_name || '';
+			return this.basicInfo?.student_name || this.student?.name || this.student?.student_name || '';
 		},
 		displayStudentNo() {
-			return this.student?.studentNumber || this.student?.student_number || this.student?.username || this.student?.id || '';
+			return this.basicInfo?.student_no || this.basicInfo?.student_id || this.student?.studentNumber || this.student?.student_number || this.student?.username || this.student?.id || '';
 		},
 		displayClass() {
-			return this.student?.className || this.student?.class_name || this.student?.group_name || '';
+			return this.basicInfo?.class_name || this.basicInfo?.group_name || this.student?.className || this.student?.class_name || this.student?.group_name || '';
 		},
 		displayTitle() {
-			return this.paper?.title || '';
+			return this.basicInfo?.paper_title || this.basicInfo?.title || this.paper?.title || '';
 		},
 		total() {
 			return this.items.reduce((sum, item) => {
@@ -382,7 +391,20 @@ export default {
 				this.errors[item.key] = '';
 			});
 			this.isUpdateMode = false;
+			this.basicInfo = null;
+			this.loadBasicInfo();
 			this.loadExistingGrade();
+		},
+		async loadBasicInfo() {
+			if (!this.paperId) return;
+			try {
+				const res = await getStudentBasicInfo(this.paperId);
+				const data = (res && (res.data || res)) || {};
+				this.basicInfo = data.data || data;
+			} catch (e) {
+				console.error('获取学生论文基础信息失败:', e);
+				this.basicInfo = null;
+			}
 		},
 		async loadExistingGrade() {
 			if (!this.paperId) return;
@@ -391,17 +413,25 @@ export default {
 				const res = await getPaperGrade(this.paperId);
 				const data = (res && (res.data || res)) || {};
 				const grade = data.data || data;
-				if (grade && (grade.total_score !== undefined || grade.topic_meaning !== undefined)) {
+				// 识别接口是否返回了有效评分：任一字段有值即认为存在
+				let hasGrade = false;
+				if (grade && typeof grade === 'object') {
 					this.items.forEach(item => {
-						const v = grade[item.key];
+						const apiKey = FIELD_MAP[item.key] || item.key;
+						let v = grade[apiKey];
+						if (v === undefined || v === null || v === '') {
+							// 兼容旧字段名
+							v = grade[item.key];
+						}
 						if (v !== undefined && v !== null && v !== '') {
 							this.form[item.key] = String(v);
+							hasGrade = true;
 						}
 					});
-					this.isUpdateMode = true;
 				}
+				this.isUpdateMode = hasGrade;
 			} catch (e) {
-				// 接口未就绪或暂无评分，忽略
+				// 接口 404 / 评分不存在是正常场景，静默处理
 				console.warn('[PaperReviewModal] 加载已有评分失败或不存在:', e && e.message);
 			} finally {
 				this.loading = false;
@@ -493,66 +523,52 @@ export default {
 			if (!Number.isFinite(num)) return '';
 			return Number.isInteger(num) ? String(num) : num.toFixed(1);
 		},
-		handleDownloadPdf() {
-			// #ifdef H5
+		async handleDownloadDocx() {
+			if (!this.paperId) {
+				uni.showToast({ title: '缺少论文 ID', icon: 'none' });
+				return;
+			}
 			try {
-				const node = document.getElementById('paper-review-print-area');
-				if (!node) {
-					uni.showToast({ title: '预览节点未就绪', icon: 'none' });
-					return;
+				uni.showLoading({ title: '下载中...' });
+				const res = await downloadReviewTable(this.paperId);
+				uni.hideLoading();
+				if (res && res instanceof ArrayBuffer) {
+					const blob = new Blob([res], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+					const fileName = (this.displayName || 'student') + '_' + (this.displayTitle || '评阅表') + '.docx';
+					const url = window.URL.createObjectURL(blob);
+					const link = document.createElement('a');
+					link.href = url;
+					link.download = fileName;
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+					setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+					uni.showToast({ title: '下载已开始', icon: 'success' });
+				} else {
+					uni.showToast({ title: '下载失败', icon: 'none' });
 				}
-				const html = node.outerHTML;
-				// 抓取页面中评阅表组件相关的样式（scoped 样式靠 data-v 属性已带在 outerHTML 里）
-				const styles = Array.from(document.querySelectorAll('style'))
-					.map(s => s.innerHTML)
-					.join('\n');
-				const linkTags = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-					.map(l => l.outerHTML)
-					.join('\n');
-				const title = `评阅表_${this.displayName || ''}_${this.displayStudentNo || ''}`.replace(/_+$/, '');
-				const win = window.open('', '_blank', 'width=900,height=1200');
-				if (!win) {
-					uni.showToast({ title: '请允许弹出窗口后重试', icon: 'none' });
-					return;
-				}
-				win.document.open();
-				win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>${linkTags}<style>${styles}</style><style>
-@page { size: A4; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; font-family: "SimSun","宋体","Songti SC",serif; }
-body { padding: 18mm 16mm; }
-#paper-review-print-area { box-shadow: none !important; border: none !important; padding: 56px 64px 60px !important; margin: 0 auto !important; width: auto !important; min-height: auto !important; transform: none !important; position: relative !important; top: auto !important; left: auto !important; }
-.review-grade-mask, .review-grade-wrapper, .review-grade-header, .review-grade-footer { display: none !important; }
-@media print { body { padding: 16mm 14mm; } }
-</style></head><body>${html}</body></html>`);
-				win.document.close();
-				// 等待样式加载后触发打印
-				setTimeout(() => {
-					try {
-						win.focus();
-						win.print();
-					} catch (e) { /* ignore */ }
-				}, 350);
 			} catch (e) {
-				console.warn('[PaperReviewModal] 下载 PDF 失败:', e && e.message);
+				uni.hideLoading();
+				console.warn('[PaperReviewModal] 下载 DOCX 失败:', e && e.message);
 				uni.showToast({ title: '下载失败，请重试', icon: 'none' });
 			}
-			// #endif
-			// #ifndef H5
-			uni.showToast({ title: 'PDF 下载仅在 H5 端可用', icon: 'none' });
-			// #endif
 		},
 		async handleSubmit() {
 			if (!this.validateAll()) {
 				uni.showToast({ title: '请先完整填写并修正错误', icon: 'none' });
 				return;
 			}
+			if (!this.paperId) {
+				uni.showToast({ title: '缺少论文 ID，无法保存', icon: 'none' });
+				return;
+			}
+			// 按接口字段名构造 payload
 			const payload = {
-				topic_meaning: parseFloat(this.form.topic_meaning),
-				logic: parseFloat(this.form.logic),
-				application: parseFloat(this.form.application),
-				analysis: parseFloat(this.form.analysis),
-				format: parseFloat(this.form.format),
-				total_score: Number(this.totalDisplay)
+				topic_significance_score: parseFloat(this.form.topic_meaning),
+				logical_ability_score: parseFloat(this.form.logic),
+				knowledge_application_score: parseFloat(this.form.application),
+				problem_analysis_solution_score: parseFloat(this.form.analysis),
+				academic_norm_score: parseFloat(this.form.format)
 			};
 			this.submitting = true;
 			try {
@@ -562,17 +578,22 @@ body { padding: 18mm 16mm; }
 				this.$emit('saved', { paperId: this.paperId, ...payload });
 				this.$emit('close');
 			} catch (e) {
-				// 后端接口尚未就绪时，允许回退到本地存储，保证前端可体验
-				console.warn('[PaperReviewModal] 接口保存失败，回退本地存储:', e && e.message);
-				try {
-					const key = `paper_grade_${this.paperId}`;
-					uni.setStorageSync(key, { ...payload, _local: true, ts: Date.now() });
-					uni.showToast({ title: '已暂存（本地）', icon: 'none' });
-					this.$emit('saved', { paperId: this.paperId, ...payload, _local: true });
-					this.$emit('close');
-				} catch (err) {
-					uni.showToast({ title: '保存失败，请稍后再试', icon: 'none' });
+				// 接口报错：Toast 提示具体错误信息，保留弹窗不关闭
+				console.warn('[PaperReviewModal] 评分保存失败:', e);
+				let msg = '保存失败，请重试';
+				const errData = e && (e.data || e.response && e.response.data);
+				if (errData && errData.detail) {
+					if (Array.isArray(errData.detail) && errData.detail.length) {
+						msg = errData.detail[0].msg || msg;
+					} else if (typeof errData.detail === 'string') {
+						msg = errData.detail;
+					}
+				} else if (e && e.errMsg) {
+					msg = e.errMsg;
+				} else if (e && e.message) {
+					msg = e.message;
 				}
+				uni.showToast({ title: msg, icon: 'none', duration: 2500 });
 			} finally {
 				this.submitting = false;
 			}
