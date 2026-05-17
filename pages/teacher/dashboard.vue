@@ -21,7 +21,7 @@
       <nav class="sidebar-nav">
         <view class="nav-item" :class="{ active: !selectedClass }" @click="backToClassList">
           <text class="material-symbols-outlined">dashboard_customize</text>
-          <text class="nav-label">选择班级</text>
+          <text class="nav-label">选择群组</text>
         </view>
         <view class="nav-item" :class="{ active: currentFilter === 'all' && !showMessageCenter }" @click="switchFilter('all')">
           <text class="material-symbols-outlined">group</text>
@@ -126,8 +126,8 @@
         <view class="class-selection-view" v-if="!selectedClass && !isAllClassMode">
           <view class="page-header">
             <view>
-              <h2 class="page-title">选择班级</h2>
-              <p class="page-subtitle">请选择要管理的班级以查看学生论文</p>
+              <h2 class="page-title">选择群组</h2>
+              <p class="page-subtitle">请选择要管理的群组以查看学生论文</p>
             </view>
           </view>
           
@@ -135,7 +135,7 @@
             <view class="class-card" v-for="(item, index) in classList" :key="index" @click="selectClass(item)">
               <view class="class-header">
                 <h3 class="class-name">{{ item.name }}</h3>
-                <text class="class-code">班级编号：{{ item.code || item.id }}</text>
+                <text class="class-code">群组编号：{{ item.code || item.id }}</text>
               </view>
               <view class="class-stats">
                 <view class="stat-box">
@@ -192,8 +192,8 @@
                 <text class="material-symbols-outlined" style="color:#10b981">group</text>
               </view>
               <view class="filter-info">
-                <text class="filter-label">按班级筛选</text>
-                <text class="filter-value">{{ isAllClassMode ? '全部班级' : (selectedClass ? selectedClass.name : '全部') }}</text>
+                <text class="filter-label">按群组筛选</text>
+                <text class="filter-value">{{ isAllClassMode ? '全部群组' : (selectedClass ? selectedClass.name : '全部') }}</text>
               </view>
               <text class="material-symbols-outlined filter-chevron">expand_more</text>
               <!-- 班级下拉列表 -->
@@ -204,7 +204,7 @@
                   @click="switchClass(null)"
                 >
                   <text class="material-symbols-outlined">all_inclusive</text>
-                  <text>全部班级</text>
+                  <text>全部群组</text>
                   <text class="material-symbols-outlined check-icon" v-if="isAllClassMode">check</text>
                 </view>
                 <view
@@ -256,7 +256,7 @@
                   <view class="student-info">
                     <text class="student-name">{{ student.name }}</text>
                     <text class="student-id">学号: {{ student.studentNumber || student.id }}</text>
-                    <text class="student-class" v-if="selectedClass || isAllClassMode">班级: {{ isAllClassMode ? (student.className || student.groupName || '') : selectedClass.name }}</text>
+                    <text class="student-class" v-if="selectedClass || isAllClassMode">班级: {{ student.className || (isAllClassMode ? (student.groupName || '') : selectedClass.name) }}</text>
                     <view class="status-badge" :class="student.isUnuploaded || !student.paper ? 'status-unuploaded' : getStatusClass(student.paper?.status)">
                       <view class="status-dot"></view>
                       <text>{{ student.isUnuploaded || !student.paper ? '未上传' : getStatusText(student.paper?.status) }}</text>
@@ -425,7 +425,7 @@
       <view class="custom-modal-content all-deadlines-modal" @click.stop>
         <view class="custom-modal-header">
           <text class="material-symbols-outlined all-ddl-header-icon">event_note</text>
-          <text>各班级截止日期总览</text>
+          <text>各群组截止日期总览</text>
         </view>
         <view class="all-deadlines-list">
           <view v-if="allDeadlinesList.length === 0" class="all-deadlines-empty">
@@ -593,6 +593,11 @@
               <text>查看PDF版</text>
             </button>
             <view class="toolbar-divider" v-if="currentPaper?.pdfOssKey || currentPaper?.pdf_oss_key"></view>
+            <button type="button" class="toolbar-btn" @click.stop.prevent="handleDownloadOpinion" v-if="currentPaper">
+              <text class="material-symbols-outlined">description</text>
+              <text>下载评阅表</text>
+            </button>
+            <view class="toolbar-divider" v-if="currentPaper"></view>
             <!-- 评分按钮：仅「已定稿」论文显示 -->
             <template v-if="currentPaper && currentPaper.status === '已定稿'">
               <button
@@ -1121,6 +1126,7 @@
 	import { get } from '@/api/request.js';
 	import { logout } from '@/api/user.js';
 	import { config } from '@/api/config.js';
+	import { getStudentBasicInfo, downloadReviewOpinionTable } from '@/api/teacher.js';
 
 	export default {
 		components: {
@@ -1133,6 +1139,7 @@
 				currentFilter: 'all',
 				students: [], // 改为空数组，从接口加载
 				groupPapers: [], // 群组论文列表
+				allGroupStudents: [], // 群组全部学生（含未上传，papers=[]）
 				unuploadedMembers: [], // 未上传论文的成员列表
 				loading: true, // 加载状态
 				showReview: false,
@@ -1337,16 +1344,21 @@
 				return map[this.currentFilter] || '全部';
 			},
 			filteredStudents() {
-				// 未上传筛选：直接返回未上传成员列表
+				// 未上传筛选：从 students 中找没有论文的学生（papers 为空或不存在）
 				if (this.currentFilter === 'unuploaded') {
-					console.log('filteredStudents - unuploaded模式, unuploadedMembers:', this.unuploadedMembers);
-					const result = this.unuploadedMembers.map(member => ({
-						id: member.student_id || member.id,
-						name: member.student_name || member.name || '未知学生',
-						isUnuploaded: true, // 标记为未上传
-						unuploadedInfo: member
+					const unuploaded = (this.students || []).filter(s =>
+						!s.papers || s.papers.length === 0
+					);
+					console.log('[filteredStudents] students总数:', this.students.length, '未上传人数:', unuploaded.length,
+						'名单:', JSON.stringify(unuploaded.map(s => s.name)));
+					const result = unuploaded.map(s => ({
+						id: s.id,
+						name: s.name || '未知学生',
+						studentNumber: s.studentNumber || '',
+						className: s.className || '',
+						isUnuploaded: true
 					}));
-					console.log('filteredStudents - 未上传结果:', result);
+					console.log('filteredStudents - 未上传结果:', result.length, '人');
 					return result;
 				}
 				
@@ -2025,16 +2037,14 @@
 			// 选择班级
 			async selectClass(classItem) {
 				this.selectedClass = classItem;
+				this.allGroupStudents = [];
 				this.studentLoadError = false; // 重置学生加载错误状态
 				// 先 await 确保学生+论文数据加载完毕（getStudentsByClass 已含论文状态/版本信息）
 				await this.loadDashboardData();
 				this.loadDeadlineSetting(); // 切换班级时加载对应班级的截止日期
 						
 				// 补充论文文件路径（ossKey），不覆盖状态/版本
-				this.loadGroupPapers();
-						
-				// 调用接口获取未上传论文的成员列表
-				await this.loadUnuploadedMembers();
+				await this.loadGroupPapers();
 			},
 			
 			// 加载群组论文列表
@@ -2049,21 +2059,31 @@
 					const { getGroupPapers } = await import('@/api/teacher.js');
 					const res = await getGroupPapers(groupId);
 					
-					console.log('群组论文列表返回:', res);
+					console.log('群组论文列表返回:', JSON.stringify(res));
 					console.log('res结构:', Object.keys(res || {}));
+					console.log('res.students:', JSON.stringify(res?.students));
 					console.log('res.papers:', res?.papers);
-					console.log('res.data:', res?.data);
+					console.log('res.data?.students:', JSON.stringify(res?.data?.students));
 					console.log('res.data?.papers:', res?.data?.papers);
 					
-					// 判断成功：后端直接返回数据对象
-					const hasValidData = res && (res.papers !== undefined || res.data?.papers !== undefined);
+					// 判断成功：后端直接返回数据对象（students 或 papers）
+					const hasValidData = res && (res.students !== undefined || res.papers !== undefined || res.data?.students !== undefined || res.data?.papers !== undefined);
 					console.log('hasValidData:', hasValidData);
 					
 					if (hasValidData) {
-						// 处理论文列表数据
-						const papers = res.papers || res.data?.papers || [];
+						// 保存原始学生列表（含 papers=[] 的未上传学生）
+						this.allGroupStudents = res.students || res.data?.students || [];
+						// 扁平化：从 students 中提取所有论文（兼容旧 papers 字段）
+						let papers = res.papers || res.data?.papers || [];
+						if (papers.length === 0 && this.allGroupStudents.length > 0) {
+							papers = [];
+							this.allGroupStudents.forEach(s => {
+								(s.papers || []).forEach(p => papers.push(p));
+							});
+						}
 						this.groupPapers = papers;
-						console.log('获取到论文数量:', papers.length);
+						console.log('获取到学生数量:', this.allGroupStudents.length, '论文数量:', papers.length);
+						console.log('allGroupStudents 未上传:', JSON.stringify(this.allGroupStudents.filter(s => !s.papers || s.papers.length === 0).map(s => s.student_name || s.name)));
 						
 						// 将论文数据按学生分组
 						if (papers.length > 0) {
@@ -2186,6 +2206,9 @@
 							// 更新统计
 							this.updateStats();
 						}
+					
+						// 异步补充：用 basic-info 接口更新论文标题和班级名
+						this.enrichStudentBasicInfo();
 					} else {
 						console.warn('获取群组论文列表失败:', res?.message || res);
 						this.groupPapers = [];
@@ -2194,6 +2217,54 @@
 					console.error('加载群组论文列表失败:', err);
 					this.groupPapers = [];
 				}
+			},
+			
+			// 用 student-basic-info 接口更新论文标题和班级名
+			async enrichStudentBasicInfo() {
+				const students = this.students || [];
+				const tasks = [];
+				students.forEach((student) => {
+					const papers = student.papers || [];
+					if (papers.length > 0) {
+						// 有论文：用 paper_id 查询
+						papers.forEach((paper) => {
+							const pid = paper.paperId || paper.paper_id || paper.id;
+							if (!pid) return;
+							tasks.push(
+								getStudentBasicInfo(pid)
+									.then((res) => {
+										const data = (res && res.data) || res || {};
+										const info = data.data || data;
+										if (info && typeof info === 'object') {
+											if (info.paper_title) this.$set(paper, 'title', info.paper_title);
+											if (info.class_name) this.$set(student, 'className', info.class_name);
+										}
+									})
+									.catch((e) => {
+										console.warn('[enrichStudentBasicInfo] 获取论文', pid, '基础信息失败:', e && e.message);
+									})
+							);
+						});
+					} else {
+						// 未上传：用 student_number 查询班级名
+						const sno = student.studentNumber;
+						if (!sno) return;
+						tasks.push(
+							getStudentBasicInfo(null, sno)
+								.then((res) => {
+									const data = (res && res.data) || res || {};
+									const info = data.data || data;
+									if (info && typeof info === 'object' && info.class_name) {
+										this.$set(student, 'className', info.class_name);
+									}
+								})
+								.catch((e) => {
+									console.warn('[enrichStudentBasicInfo] 获取学号', sno, '基础信息失败:', e && e.message);
+								})
+						);
+					}
+				});
+				await Promise.allSettled(tasks);
 			},
 			
 			// 全部班级模式：并发加载所有班级的论文文件路径（ossKey）
@@ -2277,6 +2348,7 @@
 			backToClassList() {
 				this.selectedClass = null;
 				this.students = [];
+				this.allGroupStudents = [];
 				this.isAllClassMode = false;
 			},
 			// 加载仪表盘数据（核心改造：优化加载逻辑和失败处理）
@@ -4682,6 +4754,73 @@
 					url: `/pages/teacher/PdfPreview?url=${encodeURIComponent(pdfUrl)}&title=${encodeURIComponent(this.currentPaper?.title || 'PDF预览')}`
 				});
 				// #endif
+			},
+			// 下载评阅意见表
+			async handleDownloadOpinion() {
+				const paperId = this.currentPaper?.paper_id || this.currentPaper?.paperId || this.currentPaper?.id;
+				if (!paperId) {
+					uni.showToast({ title: '无有效论文ID', icon: 'none' });
+					return;
+				}
+				try {
+					uni.showLoading({ title: '下载评阅意见表...' });
+					
+					const baseUrl = config.baseURL || '';
+					const downloadUrl = `${baseUrl}/api/v1/papers/review-opinion-table-download?paper_id=${paperId}`;
+					
+					// #ifdef H5
+					const token = uni.getStorageSync('token') || '';
+					const response = await fetch(downloadUrl, {
+						method: 'GET',
+						headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+					});
+					if (!response.ok) {
+						uni.hideLoading();
+						uni.showToast({ title: '下载失败', icon: 'none' });
+						return;
+					}
+					const blob = await response.blob();
+					const url = window.URL.createObjectURL(blob);
+					const link = document.createElement('a');
+					link.href = url;
+					const cd = response.headers.get('content-disposition');
+					let fileName = '评阅意见表.docx';
+					if (cd) {
+						const m = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+						if (m && m[1]) fileName = m[1].replace(/['"]/g, '');
+					}
+					link.download = fileName;
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+					setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+					// #endif
+					
+					// #ifndef H5
+					uni.downloadFile({
+						url: downloadUrl,
+						header: { 'Authorization': token ? `Bearer ${token}` : '' },
+						success: (res) => {
+							if (res.statusCode === 200) {
+								uni.saveFile({
+									tempFilePath: res.tempFilePath,
+									success: () => uni.showToast({ title: '文件已保存', icon: 'success' }),
+									fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+								});
+							} else {
+								uni.showToast({ title: '下载失败', icon: 'none' });
+							}
+						},
+						fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+					});
+					// #endif
+					
+					uni.hideLoading();
+				} catch (e) {
+					uni.hideLoading();
+					console.error('[handleDownloadOpinion] 下载失败:', e);
+					uni.showToast({ title: '下载失败', icon: 'none' });
+				}
 			},
 			closeSelectTextHintMask() {
 				this.showSelectTextHintMask = false;

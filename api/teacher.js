@@ -445,18 +445,20 @@ export function getPaperGrade(paperId, opts = {}) {
 }
 
 /**
- * 获取学生论文基础信息 GET /api/v1/papers/student/basic-info
- * 入参：paper_id（query string）
- * 返回字段（约定）：college, teacher_name, student_name, student_no, class_name, title 等
+ * 获取学生论文基础信息 GET /api/v1/papers/student-basic-info
+ * 入参：paper_id 或 student_id（query string，二选一）
+ * 返回字段（约定）：college, teacher_name, student_name, student_no, class_name, paper_title 等
  */
-export function getStudentBasicInfo(paperId) {
+export function getStudentBasicInfo(paperId, studentNo) {
   const userInfo = uni.getStorageSync('userInfo') || {};
   const currentUser = JSON.stringify({
     sub: userInfo.id || userInfo.sub || 0,
     username: userInfo.username || '',
     roles: ['teacher']
   });
-  const query = { current_user: currentUser, paper_id: paperId };
+  const query = { current_user: currentUser };
+  if (paperId) query.paper_id = paperId;
+  if (studentNo) query.student_id = studentNo;
   return get('/api/v1/papers/student-basic-info', query);
 }
 
@@ -470,6 +472,38 @@ export function downloadReviewTable(paperId) {
     url: '/api/v1/papers/review-table-download',
     method: 'GET',
     params: { paper_id: paperId },
+    responseType: 'arraybuffer',
+    timeout: 120000,
+    needAuth: false
+  });
+}
+
+/**
+ * 下载评阅意见表 DOCX GET /api/v1/papers/review-opinion-table-download
+ * 入参：paper_id（query string）
+ * 返回：DOCX 二进制文件流
+ */
+export function downloadReviewOpinionTable(paperId) {
+  return request({
+    url: '/api/v1/papers/review-opinion-table-download',
+    method: 'GET',
+    params: { paper_id: paperId },
+    responseType: 'arraybuffer',
+    timeout: 120000,
+    needAuth: false
+  });
+}
+
+/**
+ * 导出成绩汇总表 Excel GET /api/v1/papers/score-summary-export
+ * 入参：class_name（query string）
+ * 返回：Excel 二进制文件流
+ */
+export function exportScoreSummary(className) {
+  return request({
+    url: '/api/v1/papers/score-summary-export',
+    method: 'GET',
+    params: { class_name: className },
     responseType: 'arraybuffer',
     timeout: 120000,
     needAuth: false

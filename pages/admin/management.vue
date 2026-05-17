@@ -735,6 +735,31 @@
 								</view>
 								<text class="material-symbols-outlined dash-deadline-chevron">chevron_right</text>
 							</view>
+							<view class="dash-deadline-row dash-score-row">
+								<view class="dash-deadline-cal dash-score-cal">
+									<text class="material-symbols-outlined">summarize</text>
+								</view>
+								<view class="dash-deadline-copy">
+									<text class="dash-deadline-title">成绩汇总导出</text>
+									<text class="dash-deadline-desc">输入班级名称，下载该班级的成绩汇总表</text>
+								</view>
+								<view class="dash-score-actions" @click.stop>
+									<input 
+										v-model="scoreExportClassName"
+										class="dash-score-input"
+										type="text"
+										placeholder="输入班级名，如 22电信1"
+									/>
+									<button 
+										type="button" 
+										class="dash-score-btn"
+										:disabled="!scoreExportClassName.trim()"
+										@click.stop="handleAdminExportScore">
+										<text class="material-symbols-outlined">download</text>
+										<text>下载</text>
+									</button>
+								</view>
+							</view>
 						</view>
 					</view>
 
@@ -2073,6 +2098,7 @@
 <script>
 	import config from '@/api/config.js';
 	import { logout } from '@/api/user.js';
+	import { exportScoreSummary } from '@/api/teacher.js';
 	
 	export default {
 		data() {
@@ -2273,6 +2299,8 @@
 					paperUpdated: 0,
 					updateTime: ''
 				},
+				// 成绩汇总导出
+				scoreExportClassName: '',
 				// 群组关系一览（扁平成员行）
 				groupRelationsAllRows: [],
 				/** 群组关系一览：按群组 pathId 筛选，'' 表示全部 */
@@ -3216,6 +3244,81 @@
 				this.selectedGroupId = null;
 				this.deadlineList = [];
 				this.groupIdInput = '';
+			},
+			
+			// 成绩汇总导出
+			async handleAdminExportScore() {
+				const className = (this.scoreExportClassName || '').trim();
+				if (!className) {
+					uni.showToast({ title: '请输入班级名称', icon: 'none' });
+					return;
+				}
+				try {
+					uni.showLoading({ title: '下载成绩汇总表...' });
+					
+					const baseUrl = config.baseURL || '';
+					const classNameEncoded = encodeURIComponent(className);
+					const downloadUrl = `${baseUrl}/api/v1/papers/score-summary-export?class_name=${classNameEncoded}`;
+					
+					// #ifdef H5
+					const token = uni.getStorageSync('token') || '';
+					const response = await fetch(downloadUrl, {
+						method: 'GET',
+						headers: {
+							'Authorization': token ? `Bearer ${token}` : ''
+						}
+					});
+					
+					if (!response.ok) {
+						uni.hideLoading();
+						uni.showToast({ title: '下载失败', icon: 'none' });
+						return;
+					}
+					
+					const blob = await response.blob();
+					const url = window.URL.createObjectURL(blob);
+					const link = document.createElement('a');
+					link.href = url;
+					const contentDisposition = response.headers.get('content-disposition');
+					let fileName = `成绩汇总_${className}.xlsx`;
+					if (contentDisposition) {
+						const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+						if (match && match[1]) fileName = match[1].replace(/['"]/g, '');
+					}
+					link.download = fileName;
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+					setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+					// #endif
+					
+					// #ifndef H5
+					uni.downloadFile({
+						url: downloadUrl,
+						header: {
+							'Authorization': token ? `Bearer ${token}` : ''
+						},
+						success: (res) => {
+							if (res.statusCode === 200) {
+								uni.saveFile({
+									tempFilePath: res.tempFilePath,
+									success: () => uni.showToast({ title: '文件已保存', icon: 'success' }),
+									fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+								});
+							} else {
+								uni.showToast({ title: '下载失败', icon: 'none' });
+							}
+						},
+						fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+					});
+					// #endif
+					
+					uni.hideLoading();
+				} catch (e) {
+					uni.hideLoading();
+					console.error('[handleAdminExportScore] 下载失败:', e);
+					uni.showToast({ title: '下载失败，请稍后重试', icon: 'none' });
+				}
 			},
 			
 			// 根据群组编号查询截止日期
@@ -13123,6 +13226,70 @@
 		font-size: 40rpx;
 		color: #94a3b8;
 		flex-shrink: 0;
+	}
+
+	/* 成绩汇总导出 */
+	.dash-score-cal {
+		background: rgba(0, 106, 95, 0.12);
+		color: #006a5f;
+	}
+
+	.dash-score-actions {
+		display: flex;
+		align-items: center;
+		gap: 16rpx;
+		flex-shrink: 0;
+	}
+
+	.dash-score-input {
+		width: 280rpx;
+		height: 64rpx;
+		padding: 0 20rpx;
+		font-size: 24rpx;
+		border: 1px solid #e2e8f0;
+		border-radius: 12rpx;
+		background: #f8fafc;
+		color: #0f172a;
+		outline: none;
+	}
+
+	.dash-score-input:focus {
+		border-color: #006a5f;
+		background: #fff;
+	}
+
+	.dash-score-input::placeholder {
+		color: #94a3b8;
+	}
+
+	.dash-score-btn {
+		display: flex;
+		align-items: center;
+		gap: 8rpx;
+		padding: 0 24rpx;
+		height: 64rpx;
+		font-size: 24rpx;
+		font-weight: 600;
+		color: #fff;
+		background: #006a5f;
+		border: none;
+		border-radius: 12rpx;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+
+	.dash-score-btn:active {
+		background: #005249;
+	}
+
+	.dash-score-btn[disabled] {
+		background: #cbd5e1;
+		color: #94a3b8;
+		cursor: not-allowed;
+	}
+
+	.dash-score-btn .material-symbols-outlined {
+		font-size: 32rpx;
 	}
 
 	.dash-panel--papers .dash-panel-head {
