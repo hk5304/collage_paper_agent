@@ -338,13 +338,13 @@ export function queryAllUsers(params = {}, currentUser = null) {
   });
 }
 
-/** 批量导入用户 POST /api/v1/users/import_cjlu_info
+/** 批量导入用户 POST /api/v1/users/import/cjlu-info
  *  说明：后端接口已迁移至中国计量大学信息工程学院专用导入端点
  *  multipart/form-data，仅 file 字段；学生用学号、教师用 "t"+工号 作为用户名，密码默认 123456
  */
 export function importUsers(file, currentUser = null) {
   return new Promise((resolve, reject) => {
-    const url = config.baseURL + '/api/v1/users/import_cjlu_info';
+    const url = config.baseURL + '/api/v1/users/import/cjlu-info';
     const formData = new FormData();
     formData.append('file', file);
     fetch(url, {

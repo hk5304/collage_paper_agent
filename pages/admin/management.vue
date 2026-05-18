@@ -167,8 +167,8 @@
 								<text class="tip-title">导入说明：</text>
 								<text class="tip-item">1. 支持CSV格式（.csv）和XLSX格式(.xlsx)
 								</text>
-								<text class="tip-item">2. 文件大小不超过10MB</text>
-								<text class="tip-item">3. 必须包含以下列：群组编号、群组名称、教师工号、教师姓名、学生学号、学生姓名（其中群组编号为纯数字）</text>
+								<text class="tip-item">2. 成员数量建议小于50条，过多需要导入时间较长</text>
+								<text class="tip-item">3. 参考模板文件进行填写</text>
 							</view>
 							<view class="import-actions">
 								<button class="download-template-btn" @click="downloadTemplate('tpl_69be3a38', '师生关系导入模板.xlsx')">下载模板文件</button>
@@ -463,8 +463,8 @@
 						</view>
 						<view class="access-import-tips">
 							<text class="access-import-tip-line">支持 .csv.xlsx，单文件不超过 10MB</text>
-							<text class="access-import-tip-line">需含列：用户名, 角色类型, 全名, 密码</text>
-							<text class="access-import-tip-line">角色类型取值：student/teacher/admin，用户名即学号/工号/账号</text>
+							<text class="access-import-tip-line">参考模板文件</text>
+							<text class="access-import-tip-line">成员数量建议小于50条</text>
 						</view>
 						<view v-if="selectedUserImportFile" class="access-import-file">
 							<text class="material-symbols-outlined access-import-file-ic">description</text>
